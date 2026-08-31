@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from importlib.metadata import version
+
+import bone_contouring
 from bone_contouring import (
     ContourParameters,
     InnerContourParameters,
@@ -18,6 +21,11 @@ def test_root_api_exports_parameter_types_and_preset_helpers() -> None:
     assert InnerContourParameters is not None
     assert callable(load_preset)
     assert callable(resolve_preset)
+
+
+def test_root_api_exports_installed_package_version() -> None:
+    """The import-level version should match the installed package metadata."""
+    assert bone_contouring.__version__ == version("bone-contouring")
 
 
 def test_resolve_preset_composes_each_requested_dimension() -> None:

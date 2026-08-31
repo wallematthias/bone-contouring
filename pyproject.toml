@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bone-contouring"
-version = "0.1.0"
+version = "0.1.1"
 description = "SimpleITK-first bone contour and mask generation for volumetric bone images"
 readme = "README.md"
 requires-python = ">=3.11"
