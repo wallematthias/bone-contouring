@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 geodesic = ["hrpqct-geodesic-contour>=0.1.2"]
-test = ["pytest>=8"]
+test = ["pytest>=8", "pytest-cov>=7"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
