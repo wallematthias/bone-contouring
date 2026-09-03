@@ -55,6 +55,25 @@ def test_generate_masks_fills_full_mask_holes_and_preserves_geometry() -> None:
         assert mask.GetSpacing() == image.GetSpacing()
         assert mask.GetOrigin() == image.GetOrigin()
         assert mask.GetDirection() == image.GetDirection()
+    material = sitk.GetArrayFromImage(masks.material)
+    assert set(np.unique(material)).issubset({0, 100, 127})
+    assert np.count_nonzero(material == 100) > 0
+
+
+def test_material_labelmap_encodes_trabecular_and_cortical_bone() -> None:
+    """The FEA material labelmap should split segmented bone by trab/cort masks."""
+    image = _ring_image()
+    params = _standard_outer_parameters()
+    params.inner.contour_method = "standard"
+    params.inner.endosteal_threshold = 500.0
+    params.inner.endosteal_kernel_size = 1
+    params.inner.peel = 2
+
+    masks = generate_masks_from_image(image, params)
+
+    material = sitk.GetArrayFromImage(masks.material)
+    assert np.count_nonzero(material == 127) > 0
+    assert np.count_nonzero(material == 100) > 0
 
 
 def test_standard_outer_contour_can_use_gaussian_segmentation_support() -> None:

@@ -1,0 +1,75 @@
+{
+  "XtremeCTI": {
+    "modality": "xct1",
+    "default_site": "radius",
+    "segmentation": "laplace_hamming",
+    "outer_contour": "standard",
+    "inner_contour": "standard",
+    "sites": {
+      "radius": {
+        "outer": {
+          "periosteal_threshold": 300.0,
+          "periosteal_kernel_size": 12,
+          "periosteal_open_radius": 1
+        },
+        "segmentation": {
+          "laplace_hamming_threshold": 15000.0
+        }
+      },
+      "tibia": {
+        "outer": {
+          "periosteal_threshold": 300.0,
+          "periosteal_kernel_size": 12,
+          "periosteal_open_radius": 1
+        },
+        "segmentation": {
+          "laplace_hamming_threshold": 15000.0
+        }
+      },
+      "knee": {
+        "outer": {
+          "periosteal_threshold": 300.0,
+          "periosteal_kernel_size": 12,
+          "periosteal_open_radius": 1
+        }
+      }
+    }
+  },
+  "XtremeCTII": {
+    "modality": "xct2",
+    "default_site": "radius",
+    "segmentation": "gauss",
+    "outer_contour": "standard",
+    "inner_contour": "standard",
+    "sites": {
+      "radius": {},
+      "tibia": {},
+      "knee": {}
+    }
+  },
+  "XtremeCTII-Geodesic": {
+    "modality": "xct2",
+    "default_site": "radius",
+    "segmentation": "gauss",
+    "outer_contour": "geodesic",
+    "inner_contour": "standard",
+    "sites": {
+      "radius": {},
+      "tibia": {},
+      "knee": {}
+    }
+  },
+  "XtremeCTII-LH": {
+    "modality": "xct2",
+    "default_site": "radius",
+    "segmentation": "laplace_hamming",
+    "contour_support_method": "gauss",
+    "outer_contour": "standard",
+    "inner_contour": "standard",
+    "sites": {
+      "radius": {},
+      "tibia": {},
+      "knee": {}
+    }
+  }
+}

@@ -40,6 +40,7 @@ class SegmentationParameters:
 
     enabled: bool = True
     method: str = "gauss"
+    contour_support_method: str = ""
     gaussian_sigma: float = 0.8
     trab_threshold: float = 320.0
     cort_threshold: float = 450.0

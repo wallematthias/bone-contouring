@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bone-contouring"
-version = "0.1.1"
+version = "0.1.2"
 description = "SimpleITK-first bone contour and mask generation for volumetric bone images"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,9 +12,13 @@ authors = [{ name = "Matthias Walle" }]
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
+  "bone-imaging-derivatives>=0.1.4",
   "numpy>=1.26,<3.0",
   "SimpleITK>=2.3",
 ]
+
+[project.scripts]
+bone-contouring = "bone_contouring.cli:main"
 
 [project.optional-dependencies]
 geodesic = ["hrpqct-geodesic-contour>=0.1.2"]
@@ -25,6 +29,9 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+bone_contouring = ["profiles/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

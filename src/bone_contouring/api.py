@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -28,6 +28,7 @@ class GeneratedMasks:
     full: sitk.Image
     trab: sitk.Image
     cort: sitk.Image
+    material: sitk.Image
     mask_provenance: dict[str, str]
     metadata: dict[str, Any]
 
@@ -74,6 +75,13 @@ def _valid_partition(full: np.ndarray, trab: np.ndarray, cort: np.ndarray) -> tu
     return True, None
 
 
+def _numpy_xyz_to_sitk_label(label_xyz: np.ndarray, reference: sitk.Image) -> sitk.Image:
+    """Create a uint8 label image with geometry copied from ``reference``."""
+    image = sitk.GetImageFromArray(np.transpose(np.asarray(label_xyz, dtype=np.uint8), (2, 1, 0)))
+    image.CopyInformation(reference)
+    return sitk.Cast(image, sitk.sitkUInt8)
+
+
 def generate_masks_from_image(
     image: sitk.Image,
     parameters: ContourParameters | None = None,
@@ -94,6 +102,11 @@ def generate_masks_from_image(
     segmentation_method = params.segmentation.method.strip().lower()
     if segmentation_method in {"global", "seg_gauss"}:
         segmentation_method = "gauss"
+    support_method = (params.segmentation.contour_support_method or segmentation_method).strip().lower()
+    if support_method in {"global", "seg_gauss"}:
+        support_method = "gauss"
+    support_params = replace(params.segmentation, method=support_method)
+    support_source_xyz = segmentation_xyz if support_method == "laplace_hamming" else density_xyz
     reusable_segmentation_support = None
 
     outer_method = params.outer.contour_method.strip().lower()
@@ -102,12 +115,12 @@ def generate_masks_from_image(
         outer_support = None
         if aligned_support_enabled:
             outer_support = contour_support_xyz(
-                segmentation_xyz,
-                params.segmentation,
+                support_source_xyz,
+                support_params,
                 spacing_xyz=spacing_xyz,
                 role="outer",
             )
-            if segmentation_method == "laplace_hamming":
+            if segmentation_method == "laplace_hamming" and support_method == "laplace_hamming":
                 reusable_segmentation_support = outer_support
         full_xyz = outer_contour_xyz(
             density_xyz,
@@ -136,8 +149,8 @@ def generate_masks_from_image(
                 inner_support = np.asarray(reusable_segmentation_support, dtype=bool) & full_xyz
             else:
                 inner_support = contour_support_xyz(
-                    segmentation_xyz,
-                    params.segmentation,
+                    support_source_xyz,
+                    support_params,
                     spacing_xyz=spacing_xyz,
                     full_mask_xyz=full_xyz,
                     role="inner",
@@ -168,22 +181,38 @@ def generate_masks_from_image(
             params.segmentation,
             spacing_xyz=spacing_xyz,
         )
+    material_xyz = np.zeros(seg_xyz.shape, dtype=np.uint8)
+    seg_bool = np.asarray(seg_xyz, dtype=bool)
+    material_xyz[seg_bool & np.asarray(trab_xyz, dtype=bool)] = 100
+    material_xyz[seg_bool & np.asarray(cort_xyz, dtype=bool)] = 127
     metadata = {
         "modality": params.modality,
         "site": params.site,
         "segmentation_method": params.segmentation.method,
+        "contour_support_method": support_method,
         "periosteal_contour_method": outer_method,
         "endosteal_contour_method": inner_method,
         "endosteal_fallback": fallback,
         "outer_contour": outer_metadata,
         "contour_support": outer_metadata,
+        "material_labels": {
+            "100": "segmentation_intersect_trabecular_mask",
+            "127": "segmentation_intersect_cortical_mask",
+        },
     }
     return GeneratedMasks(
         seg=numpy_xyz_to_sitk_binary(seg_xyz, image),
         full=numpy_xyz_to_sitk_binary(full_xyz, image),
         trab=numpy_xyz_to_sitk_binary(trab_xyz, image),
         cort=numpy_xyz_to_sitk_binary(cort_xyz, image),
-        mask_provenance={"seg": "generated", "full": "generated", "trab": "generated", "cort": "generated"},
+        material=_numpy_xyz_to_sitk_label(material_xyz, image),
+        mask_provenance={
+            "seg": "generated",
+            "full": "generated",
+            "trab": "generated",
+            "cort": "generated",
+            "fea-materials": "generated_from_seg_trab_cort",
+        },
         metadata=metadata,
     )
 
