@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from .batch import run_bone_contouring_batch
+from .algebra import run_mask_label_algebra_batch
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,6 +25,14 @@ def main(argv: list[str] | None = None) -> int:
     batch.add_argument("--output-root", default="")
     batch.add_argument("--force", action="store_true")
     batch.add_argument("--dry-run", action="store_true")
+    algebra = commands.add_parser("mask-label-algebra", help="derive missing masks and FEA labels from existing contours")
+    algebra.add_argument("dataset_root")
+    algebra.add_argument("--subject", default="")
+    algebra.add_argument("--session", default="")
+    algebra.add_argument("--voi", default="")
+    algebra.add_argument("--output-root", default="")
+    algebra.add_argument("--force", action="store_true")
+    algebra.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
     if args.command == "run-batch":
@@ -43,6 +52,18 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
         )
         print(f"wrote {len(records)} BoneContours artifact(s)")
+        return 0
+    if args.command == "mask-label-algebra":
+        records = run_mask_label_algebra_batch(
+            args.dataset_root,
+            subject_id=args.subject,
+            session_id=args.session,
+            voi=args.voi,
+            output_root=args.output_root or None,
+            force=args.force,
+            dry_run=args.dry_run,
+        )
+        print(f"wrote {len(records)} Mask And Label Algebra artifact(s)")
         return 0
     parser.print_help()
     return 2

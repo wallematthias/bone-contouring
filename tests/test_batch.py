@@ -191,3 +191,79 @@ def test_cli_run_batch_writes_bone_contours_manifest(tmp_path: Path) -> None:
 
     assert "wrote 5 BoneContours artifact(s)" in completed.stdout
     assert (tmp_path / "derivatives" / "BoneContours" / "manifest.json").exists()
+
+
+def test_run_mask_label_algebra_batch_derives_missing_trab_and_fea_labels(tmp_path: Path) -> None:
+    """Imported full/cort/seg masks should be enough to derive trab and FEA labels."""
+    from bone_contouring.algebra import run_mask_label_algebra_batch
+
+    image_path = tmp_path / "sub-001" / "ses-001" / "xct" / "sub-001_ses-001_voi-radiusleft_xct.nii.gz"
+    _write_image(image_path)
+    imported_dir = tmp_path / "derivatives" / "IPLContours" / "sub-001" / "ses-001" / "xct"
+    imported_dir.mkdir(parents=True)
+
+    full = np.zeros((9, 9, 5), dtype=np.uint8)
+    full[2:7, 2:7, 1:4] = 1
+    cort = np.zeros_like(full)
+    cort[2:7, 2:7, 1:4] = 1
+    cort[3:6, 3:6, 1:4] = 0
+    seg = np.zeros_like(full)
+    seg[2:7, 2:7, 1:4] = 1
+    for role, values in {"full": full, "cort": cort, "seg": seg}.items():
+        image = sitk.GetImageFromArray(np.transpose(values, (2, 1, 0)))
+        image.CopyInformation(sitk.ReadImage(str(image_path)))
+        sitk.WriteImage(image, str(imported_dir / f"sub-001_ses-001_voi-radiusleft_desc-{role}_mask.nii.gz"))
+
+    records = run_mask_label_algebra_batch(tmp_path)
+    roles = {record.role for record in records}
+
+    assert "trabecular_mask" in roles
+    assert "material_labelmap" in roles
+    trab_path = next(record.path for record in records if record.role == "trabecular_mask")
+    material_path = next(record.path for record in records if record.role == "material_labelmap")
+    trab_values = sitk.GetArrayFromImage(sitk.ReadImage(str(trab_path)))
+    material_values = sitk.GetArrayFromImage(sitk.ReadImage(str(material_path)))
+    assert np.count_nonzero(trab_values) > 0
+    assert {100, 127}.issubset(set(np.unique(material_values)))
+
+
+def test_mask_label_algebra_does_not_use_bone_contours_as_inputs(tmp_path: Path) -> None:
+    """Generated BoneContours are outputs, not source contours for algebra."""
+    from bone_contouring.algebra import discover_mask_label_algebra_batch
+
+    image_path = tmp_path / "sub-001" / "ses-001" / "xct" / "sub-001_ses-001_voi-radiusleft_xct.nii.gz"
+    _write_image(image_path)
+    generated_dir = tmp_path / "derivatives" / "BoneContours" / "sub-001" / "ses-001" / "xct"
+    generated_dir.mkdir(parents=True)
+    ref = sitk.ReadImage(str(image_path))
+    for role in ("full", "cort", "seg"):
+        image = sitk.Cast(ref > -1, sitk.sitkUInt8)
+        sitk.WriteImage(image, str(generated_dir / f"sub-001_ses-001_voi-radiusleft_desc-{role}_mask.nii.gz"))
+
+    rows = discover_mask_label_algebra_batch(tmp_path)
+
+    assert len(rows) == 1
+    assert rows[0].status == "missing"
+    assert rows[0].contours == {}
+
+
+def test_cli_mask_label_algebra_batch_command(tmp_path: Path) -> None:
+    """The derivation-only workflow should have a stable Slicer-callable CLI."""
+    image_path = tmp_path / "sub-001" / "ses-001" / "xct" / "sub-001_ses-001_voi-radiusleft_xct.nii.gz"
+    _write_image(image_path)
+    imported_dir = tmp_path / "derivatives" / "IPLContours" / "sub-001" / "ses-001" / "xct"
+    imported_dir.mkdir(parents=True)
+    ref = sitk.ReadImage(str(image_path))
+    for role in ("full", "trab", "cort", "seg"):
+        image = sitk.Cast(ref > -1, sitk.sitkUInt8)
+        sitk.WriteImage(image, str(imported_dir / f"sub-001_ses-001_voi-radiusleft_desc-{role}_mask.nii.gz"))
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "bone_contouring.cli", "mask-label-algebra", str(tmp_path)],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "wrote" in completed.stdout
+    assert "Mask And Label Algebra artifact" in completed.stdout
