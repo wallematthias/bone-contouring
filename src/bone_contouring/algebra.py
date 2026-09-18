@@ -35,6 +35,9 @@ from .batch import (
     _write_aim_output,
 )
 
+_FEA_INPUT_SHORT_ROLE = "fea-input"
+_LEGACY_FEA_INPUT_SHORT_ROLES = {_FEA_INPUT_SHORT_ROLE, "fea-materials"}
+
 
 @dataclass(frozen=True)
 class MaskLabelAlgebraRow:
@@ -125,7 +128,7 @@ def run_mask_label_algebra_batch(
         _emit(progress, f"deriving {', '.join(generated)} for {row.image.path.name}")
         source_metadata = _source_metadata(row.image.path)
         for short_role, image in generated.items():
-            content_type = "label" if short_role == "fea-materials" else "mask"
+            content_type = "label" if short_role in _LEGACY_FEA_INPUT_SHORT_ROLES else "mask"
             record_role = _SHORT_TO_RECORD_ROLE[short_role]
             output_path = _output_path(output_dataset_root, row.image, short_role, content_type)
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -187,7 +190,7 @@ def _discover_contour_inputs(root: Path) -> tuple[BatchArtifact, ...]:
 def _is_mask_label_algebra_output(artifact: BatchArtifact) -> bool:
     if str(artifact.metadata.get("workflow") or "") == "mask_label_algebra":
         return True
-    if str(artifact.metadata.get("short_role") or "") == "fea-materials":
+    if str(artifact.metadata.get("short_role") or "") in _LEGACY_FEA_INPUT_SHORT_ROLES:
         return True
     return False
 
@@ -206,8 +209,12 @@ def _derivable_roles(contours: dict[str, BatchArtifact], existing_outputs: tuple
         derivable.append("trab")
     if "cort" not in roles and {"full", "trab"} <= roles and "cort" not in existing_short:
         derivable.append("cort")
-    if "segmentation" in roles and _can_resolve_trab_cort(roles | set(derivable)) and "fea-materials" not in existing_short:
-        derivable.append("fea-materials")
+    if (
+        "segmentation" in roles
+        and _can_resolve_trab_cort(roles | set(derivable))
+        and not (existing_short & _LEGACY_FEA_INPUT_SHORT_ROLES)
+    ):
+        derivable.append(_FEA_INPUT_SHORT_ROLE)
     return derivable
 
 
@@ -240,9 +247,9 @@ def _derive_outputs(row: MaskLabelAlgebraRow, *, force: bool) -> dict[str, sitk.
     if (
         "segmentation" in images
         and {"trab", "cort"} <= set(images)
-        and (force or "fea-materials" not in existing_short)
+        and (force or not (existing_short & _LEGACY_FEA_INPUT_SHORT_ROLES))
     ):
-        derived["fea-materials"] = _material_labelmap(images["segmentation"], images["trab"], images["cort"])
+        derived[_FEA_INPUT_SHORT_ROLE] = _material_labelmap(images["segmentation"], images["trab"], images["cort"])
     return derived
 
 
@@ -331,6 +338,7 @@ def _operation_for_role(short_role: str) -> str:
         "full": "trab_or_cort",
         "trab": "full_and_not_cort",
         "cort": "full_and_not_trab",
+        _FEA_INPUT_SHORT_ROLE: "segmentation_intersect_trab_cort",
         "fea-materials": "segmentation_intersect_trab_cort",
     }.get(short_role, "unknown")
 
@@ -393,7 +401,7 @@ def _short_role_from_record_role(role: str) -> str:
         "periosteal_mask": "full",
         "trabecular_mask": "trab",
         "cortical_mask": "cort",
-        "material_labelmap": "fea-materials",
+        "material_labelmap": _FEA_INPUT_SHORT_ROLE,
     }.get(str(role or ""), "")
 
 

@@ -34,7 +34,7 @@ _SHORT_TO_RECORD_ROLE = {
     "full": "periosteal_mask",
     "trab": "trabecular_mask",
     "cort": "cortical_mask",
-    "fea-materials": "material_labelmap",
+    "fea-input": "material_labelmap",
 }
 _RECORD_TO_SHORT_ROLE = {value: key for key, value in _SHORT_TO_RECORD_ROLE.items()}
 
@@ -357,7 +357,7 @@ def _generated_outputs(generated: GeneratedMasks):
     yield "full", generated.full, "mask"
     yield "trab", generated.trab, "mask"
     yield "cort", generated.cort, "mask"
-    yield "fea-materials", generated.material, "label"
+    yield "fea-input", generated.material, "label"
 
 
 def _output_path(root: Path, image: BatchArtifact, short_role: str, content_type: str) -> Path:

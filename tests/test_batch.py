@@ -52,7 +52,7 @@ def test_run_bone_contouring_batch_writes_masks_sidecars_and_manifest(tmp_path: 
     assert all(record.path.parent.name == "xct" for record in manifest.records)
     sidecars = [record.path.with_name(record.path.name[:-7] + ".json") for record in manifest.records]
     assert all(path.exists() for path in sidecars)
-    assert any(record.path.name.endswith("_desc-fea-materials_label.nii.gz") for record in manifest.records)
+    assert any(record.path.name.endswith("_desc-fea-input_label.nii.gz") for record in manifest.records)
     assert json.loads(sidecars[0].read_text(encoding="utf-8"))["algorithm_metadata"]["modality"] == "xct2"
 
 
@@ -158,7 +158,7 @@ def test_aim_batch_input_writes_aim_masks(monkeypatch, tmp_path: Path) -> None:
     assert nonzero_by_role["seg"] > 0
     assert nonzero_by_role["full"] > 0
     assert nonzero_by_role["trab"] > 0
-    assert any(path.name.endswith("_desc-fea-materials_label.AIM") for path, _dtype, _count, _metadata, _unit in writes)
+    assert any(path.name.endswith("_desc-fea-input_label.AIM") for path, _dtype, _count, _metadata, _unit in writes)
     assert all(metadata["unit"] == "native" for _path, _dtype, _count, metadata, _unit in writes)
     assert all(unit == "native" for _path, _dtype, _count, _metadata, unit in writes)
 

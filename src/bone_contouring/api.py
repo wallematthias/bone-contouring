@@ -211,7 +211,7 @@ def generate_masks_from_image(
             "full": "generated",
             "trab": "generated",
             "cort": "generated",
-            "fea-materials": "generated_from_seg_trab_cort",
+            "fea-input": "generated_from_seg_trab_cort",
         },
         metadata=metadata,
     )
