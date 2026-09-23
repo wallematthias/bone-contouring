@@ -19,12 +19,13 @@ from bone_imaging_derivatives import (
     DerivativeRecord,
     discover_derivative_artifacts,
     discover_raw_xct_images,
+    preferred_contours,
     read_manifest,
     write_manifest,
 )
 from bone_imaging_derivatives.layout import manifest_path, record_output_path, voi_token
 
-from .api import GeneratedMasks, generate_masks_from_image
+from .api import GeneratedMasks, generate_bone_segmentation, generate_masks_from_image
 from .parameters import ContourParameters
 from .presets import load_preset, resolve_preset
 
@@ -37,6 +38,14 @@ _SHORT_TO_RECORD_ROLE = {
     "fea-input": "material_labelmap",
 }
 _RECORD_TO_SHORT_ROLE = {value: key for key, value in _SHORT_TO_RECORD_ROLE.items()}
+_SHORT_TO_DISCOVERY_ROLE = {
+    "seg": "segmentation",
+    "full": "full",
+    "trab": "trab",
+    "cort": "cort",
+    "fea-input": "material_labelmap",
+}
+_EXPECTED_OUTPUT_ROLES = frozenset(_SHORT_TO_DISCOVERY_ROLE.values())
 
 
 @dataclass(frozen=True)
@@ -52,11 +61,16 @@ def discover_bone_contouring_batch(dataset_root) -> tuple[BoneContouringBatchRow
     """Return contouring rows as ``ready`` or ``loadable`` for a normalized dataset."""
     root = _dataset_root(Path(dataset_root).expanduser().resolve())
     images = discover_raw_xct_images(root)
-    outputs = discover_derivative_artifacts(root, _FAMILY)
+    available = (
+        *discover_derivative_artifacts(root, "IPLContours"),
+        *discover_derivative_artifacts(root, "ImportedContours"),
+        *discover_derivative_artifacts(root, _FAMILY),
+    )
     rows: list[BoneContouringBatchRow] = []
     for image in images:
-        matching = tuple(output for output in outputs if output.key == image.key)
-        status = "loadable" if matching else "ready"
+        matching = tuple(preferred_contours(available, image.key).selected.values())
+        existing_roles = {output.role for output in matching}
+        status = "loadable" if _EXPECTED_OUTPUT_ROLES <= existing_roles else "ready"
         rows.append(BoneContouringBatchRow(image=image, status=status, outputs=matching))
     return tuple(rows)
 
@@ -112,11 +126,20 @@ def run_bone_contouring_batch(
             inner_contour=inner_contour,
         )
         image, segmentation_image, source_metadata = _read_image_inputs(image_record.path, params)
-        generated = generate_masks_from_image(image, params, segmentation_image=segmentation_image)
+        generated = _generate_with_available_contours(
+            image,
+            segmentation_image,
+            params,
+            image_record,
+            row.outputs,
+        )
+        existing_roles = {output.role for output in row.outputs}
         input_id = image_record.path.name
         settings_hash = _settings_hash(params)
         for short_role, mask, content_type in _generated_outputs(generated):
             record_role = _SHORT_TO_RECORD_ROLE[short_role]
+            if not force and _SHORT_TO_DISCOVERY_ROLE[short_role] in existing_roles:
+                continue
             output_path = _output_path(output_dataset_root, image_record, short_role, content_type)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_format = "aim" if _is_aim_path(image_record.path) else "nifti"
@@ -175,6 +198,82 @@ def run_bone_contouring_batch(
         manifest_path(output_dataset_root, _FAMILY),
     )
     return output_records
+
+
+def _generate_with_available_contours(
+    image: sitk.Image,
+    segmentation_image: sitk.Image | None,
+    parameters: ContourParameters,
+    image_record: BatchArtifact,
+    available: tuple[BatchArtifact, ...],
+) -> GeneratedMasks:
+    contour_artifacts = {
+        artifact.role: artifact
+        for artifact in available
+        if artifact.role in {"segmentation", "full", "trab", "cort"}
+    }
+    compartment_roles = {"full", "trab", "cort"} & set(contour_artifacts)
+    if len(compartment_roles) < 2:
+        return generate_masks_from_image(image, parameters, segmentation_image=segmentation_image)
+
+    from .algebra import _binary_and_not, _binary_or, _material_labelmap, _read_label_image
+
+    masks = {
+        role: _read_label_image(artifact.path, image_record.path)
+        for role, artifact in contour_artifacts.items()
+    }
+    provenance = {role: "reused" for role in masks}
+    if "full" not in masks and {"trab", "cort"} <= set(masks):
+        masks["full"] = _binary_or(masks["trab"], masks["cort"])
+        provenance["full"] = "derived_from_trab_or_cort"
+    if "trab" not in masks and {"full", "cort"} <= set(masks):
+        masks["trab"] = _binary_and_not(masks["full"], masks["cort"])
+        provenance["trab"] = "derived_from_full_and_not_cort"
+    if "cort" not in masks and {"full", "trab"} <= set(masks):
+        masks["cort"] = _binary_and_not(masks["full"], masks["trab"])
+        provenance["cort"] = "derived_from_full_and_not_trab"
+    if not {"full", "trab", "cort"} <= set(masks):
+        return generate_masks_from_image(image, parameters, segmentation_image=segmentation_image)
+
+    if "segmentation" not in masks:
+        segmentation_source = image if segmentation_image is None else segmentation_image
+        masks["segmentation"] = generate_bone_segmentation(
+            segmentation_source,
+            parameters,
+            full_mask=masks["full"],
+            trab_mask=masks["trab"],
+            cort_mask=masks["cort"],
+        )
+        provenance["segmentation"] = "generated_with_reused_contours"
+    material = _material_labelmap(masks["segmentation"], masks["trab"], masks["cort"])
+    provenance["fea-input"] = "generated_from_seg_trab_cort"
+    return GeneratedMasks(
+        seg=masks["segmentation"],
+        full=masks["full"],
+        trab=masks["trab"],
+        cort=masks["cort"],
+        material=material,
+        mask_provenance={
+            "seg": provenance["segmentation"],
+            "full": provenance["full"],
+            "trab": provenance["trab"],
+            "cort": provenance["cort"],
+            "fea-input": provenance["fea-input"],
+        },
+        metadata={
+            "modality": parameters.modality,
+            "site": parameters.site,
+            "segmentation_method": parameters.segmentation.method,
+            "contour_inputs": {
+                role: str(artifact.path)
+                for role, artifact in sorted(contour_artifacts.items())
+            },
+            "material_labels": {
+                "100": "segmentation_intersect_trabecular_mask",
+                "127": "segmentation_intersect_cortical_mask",
+            },
+        },
+    )
 
 
 def _dataset_root(root: Path) -> Path:

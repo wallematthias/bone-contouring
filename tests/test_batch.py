@@ -77,6 +77,112 @@ def test_discover_bone_contouring_batch_marks_existing_outputs_loadable(tmp_path
     assert after[0].status == "loadable"
 
 
+def test_partial_bone_contours_remain_runnable_and_preserve_existing_masks(tmp_path: Path) -> None:
+    """Missing segmentation/material outputs must be filled without replacing existing contours."""
+    from bone_imaging_derivatives import DerivativeManifest, DerivativeRecord, write_manifest
+    from bone_contouring.batch import discover_bone_contouring_batch, run_bone_contouring_batch
+
+    image_path = tmp_path / "sub-001" / "ses-001" / "xct" / "sub-001_ses-001_voi-radiusleft_xct.nii.gz"
+    _write_image(image_path)
+    contour_dir = tmp_path / "derivatives" / "BoneContours" / "sub-001" / "ses-001" / "xct"
+    existing_records = []
+    original_bytes = {}
+    for short_role, record_role in (
+        ("full", "periosteal_mask"),
+        ("trab", "trabecular_mask"),
+        ("cort", "cortical_mask"),
+    ):
+        path = contour_dir / f"sub-001_ses-001_voi-radiusleft_desc-{short_role}_mask.nii.gz"
+        _write_image(path)
+        original_bytes[path] = path.read_bytes()
+        existing_records.append(
+            DerivativeRecord(
+                "BoneContours",
+                record_role,
+                "001",
+                "radiusleft",
+                "001",
+                None,
+                "native",
+                path,
+                "generated",
+                content_type="mask",
+            )
+        )
+    write_manifest(
+        DerivativeManifest.create("BoneContours", tmp_path, {"name": "test", "version": "1"}, existing_records),
+        tmp_path / "derivatives" / "BoneContours" / "manifest.json",
+    )
+
+    assert discover_bone_contouring_batch(tmp_path)[0].status == "ready"
+
+    generated = run_bone_contouring_batch(
+        tmp_path,
+        modality="xct2",
+        site="radius",
+        segmentation="gauss",
+        inner_contour="none",
+    )
+
+    assert {record.role for record in generated} == {"bone_segmentation", "material_labelmap"}
+    assert all(path.read_bytes() == contents for path, contents in original_bytes.items())
+    assert discover_bone_contouring_batch(tmp_path)[0].status == "loadable"
+
+
+def test_bone_contouring_reuses_ipl_compartments_and_derives_missing_full_mask(tmp_path: Path) -> None:
+    """IPL trab/cort masks should drive missing BoneContours outputs without being replaced."""
+    from bone_imaging_derivatives import DerivativeManifest, DerivativeRecord, write_manifest
+    from bone_contouring.batch import discover_bone_contouring_batch, run_bone_contouring_batch
+
+    image_path = tmp_path / "sub-001" / "ses-001" / "xct" / "sub-001_ses-001_voi-radiusleft_xct.nii.gz"
+    _write_image(image_path)
+    contour_dir = tmp_path / "derivatives" / "IPLContours" / "sub-001" / "ses-001" / "xct"
+    records = []
+    original_bytes = {}
+    for short_role, record_role in (("trab", "trabecular_mask"), ("cort", "cortical_mask")):
+        path = contour_dir / f"sub-001_ses-001_voi-radiusleft_desc-{short_role}_mask.nii.gz"
+        _write_image(path)
+        original_bytes[path] = path.read_bytes()
+        records.append(
+            DerivativeRecord(
+                "IPLContours",
+                record_role,
+                "001",
+                "radiusleft",
+                "001",
+                None,
+                "native",
+                path,
+                "provided",
+                content_type="mask",
+            )
+        )
+    write_manifest(
+        DerivativeManifest.create("IPLContours", tmp_path, {"name": "test", "version": "1"}, records),
+        tmp_path / "derivatives" / "IPLContours" / "manifest.json",
+    )
+
+    discovered = discover_bone_contouring_batch(tmp_path)
+    assert discovered[0].status == "ready"
+    assert {artifact.role for artifact in discovered[0].outputs} == {"trab", "cort"}
+
+    generated = run_bone_contouring_batch(
+        tmp_path,
+        modality="xct2",
+        site="radius",
+        segmentation="gauss",
+        inner_contour="standard",
+    )
+
+    assert {record.role for record in generated} == {
+        "bone_segmentation",
+        "periosteal_mask",
+        "material_labelmap",
+    }
+    assert all(path.read_bytes() == contents for path, contents in original_bytes.items())
+    assert discover_bone_contouring_batch(tmp_path)[0].status == "loadable"
+
+
 def test_aim_batch_input_uses_py_aimio_density_reader(monkeypatch) -> None:
     """AIM files should be read through py_aimio, not SimpleITK ImageFileReader."""
     import sys
