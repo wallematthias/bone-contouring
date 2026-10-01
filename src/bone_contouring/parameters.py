@@ -64,6 +64,41 @@ class SegmentationParameters:
 
 
 @dataclass(slots=True)
+class BuieParameters:
+    """Buie Fig. 1 kernels in voxels (dimensions, NOT radii).
+
+    Density thresholds remain in ``outer`` and ``inner`` and must use the
+    input image's calibrated units. Gaussian support is interpreted as VTK
+    radius factors, giving radii (9, 9, 3) at sigma 3. No IPL equivalence is
+    implied by these defaults.
+    """
+
+    median_kernel_size: tuple[int, int, int] = (3, 3, 1)
+    periosteal_kernel_size: tuple[int, int, int] = (15, 15, 1)
+    endosteal_kernel_size: tuple[int, int, int] = (10, 10, 1)
+    gaussian_sigma: float = 3.0
+    gaussian_radius_factors: tuple[float, float, float] = (3.0, 3.0, 1.0)
+    final_threshold: float = 100.0
+    fully_connected: bool = False
+
+
+@dataclass(slots=True)
+class Stable3DParameters:
+    """Physical-unit boundary regularization and advisory quality controls.
+
+    Standard settings shared across presets, evaluated on XCTII radius/tibia,
+    not an IPL recipe. The boundary-change limit restricts smoothing, not the
+    preceding contour repair.
+    """
+
+    outer_sigma_mm: tuple[float, float, float] = (0.03, 0.03, 0.06)
+    inner_sigma_mm: tuple[float, float, float] = (0.03, 0.03, 0.06)
+    max_boundary_shift_mm: float = 0.12
+    area_jump_fraction: float = 0.25
+    adjacent_boundary_limit_mm: float = 0.3
+
+
+@dataclass(slots=True)
 class ContourParameters:
     """Complete configuration for full, compartment, and bone masks."""
 
@@ -72,3 +107,8 @@ class ContourParameters:
     outer: OuterContourParameters = field(default_factory=OuterContourParameters)
     inner: InnerContourParameters = field(default_factory=InnerContourParameters)
     segmentation: SegmentationParameters = field(default_factory=SegmentationParameters)
+    buie: BuieParameters = field(default_factory=BuieParameters)
+    stable_3d: Stable3DParameters = field(default_factory=Stable3DParameters)
+
+
+STANDARD_ALGORITHM_REVISION = "topology_first_v1"

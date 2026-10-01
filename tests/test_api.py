@@ -76,8 +76,8 @@ def test_material_labelmap_encodes_trabecular_and_cortical_bone() -> None:
     assert np.count_nonzero(material == 100) > 0
 
 
-def test_standard_outer_contour_can_use_gaussian_segmentation_support() -> None:
-    """Aligned contour support should use the Gaussian bone-support threshold, not adaptive support."""
+def test_standard_outer_contour_ignores_gaussian_tissue_support() -> None:
+    """A tissue support threshold must not override the density envelope threshold."""
     values = np.zeros((21, 21, 3), dtype=np.float32)
     values[5:16, 5:16, :] = 310.0
     image = _image_from_xyz(values)
@@ -96,15 +96,16 @@ def test_standard_outer_contour_can_use_gaussian_segmentation_support() -> None:
     masks = generate_masks_from_image(image, params)
 
     full = sitk_to_numpy_xyz(masks.full) > 0
-    assert full[10, 10, 1]
-    assert masks.metadata["contour_support"]["outer_method"] == "gauss"
+    assert not full.any()
+    assert masks.metadata["contour_support"]["support"] == "independent_gaussian_density"
 
 
-def test_standard_outer_contour_can_use_laplace_hamming_segmentation_source(monkeypatch) -> None:
-    """Laplace-Hamming support should be computed from the supplied native segmentation image."""
+def test_laplace_hamming_uses_native_tissue_image_not_for_contour_support(monkeypatch) -> None:
+    """The density contour and native-unit tissue source remain independent."""
     from bone_contouring import _arrays
 
     density = np.zeros((11, 11, 3), dtype=np.float32)
+    density[2:9, 2:9, :] = 900.0
     native = np.zeros_like(density)
     native[3:8, 3:8, :] = 20000.0
     image = _image_from_xyz(density)
@@ -129,14 +130,16 @@ def test_standard_outer_contour_can_use_laplace_hamming_segmentation_source(monk
     full = sitk_to_numpy_xyz(masks.full) > 0
     assert seen["max"] == 20000.0
     assert full[5, 5, 1]
-    assert masks.metadata["contour_support"]["outer_method"] == "laplace_hamming"
+    assert sitk_to_numpy_xyz(masks.seg)[5, 5, 1]
+    assert masks.metadata["contour_support"]["support"] == "independent_gaussian_density"
 
 
-def test_laplace_hamming_aligned_support_is_reused_for_final_segmentation(monkeypatch) -> None:
-    """When LH support drives contours and segmentation, the expensive filter should run once."""
+def test_laplace_hamming_tissue_filter_runs_once_after_contouring(monkeypatch) -> None:
+    """Independent envelopes must not duplicate the native-unit tissue filter."""
     from bone_contouring import _arrays
 
     density = np.zeros((11, 11, 5), dtype=np.float32)
+    density[2:9, 2:9, :] = 900.0
     native = np.zeros_like(density)
     native[3:8, 3:8, :] = 20000.0
     image = _image_from_xyz(density)
@@ -152,6 +155,8 @@ def test_laplace_hamming_aligned_support_is_reused_for_final_segmentation(monkey
     params.outer.contour_method = "standard"
     params.outer.periosteal_kernel_size = 0
     params.outer.periosteal_open_radius = 0
+    params.outer.gaussian_sigma = 0
+    params.stable_3d.outer_sigma_mm = (0, 0, 0)
     params.inner.contour_method = "none"
     params.segmentation.method = "laplace_hamming"
     params.segmentation.use_segmentation_aligned_contour_support = True
@@ -159,7 +164,9 @@ def test_laplace_hamming_aligned_support_is_reused_for_final_segmentation(monkey
     masks = generate_masks_from_image(image, params, segmentation_image=segmentation_image)
 
     assert calls["count"] == 1
-    assert np.array_equal(sitk_to_numpy_xyz(masks.seg) > 0, sitk_to_numpy_xyz(masks.full) > 0)
+    assert np.array_equal(sitk_to_numpy_xyz(masks.seg) > 0, native > 10000)
+    assert sitk_to_numpy_xyz(masks.full)[2, 2, 2]
+    assert not sitk_to_numpy_xyz(masks.seg)[2, 2, 2]
 
 
 def test_none_inner_contour_assigns_full_mask_to_trabecular_compartment() -> None:
@@ -174,18 +181,20 @@ def test_none_inner_contour_assigns_full_mask_to_trabecular_compartment() -> Non
     assert masks.metadata["endosteal_contour_method"] == "none"
 
 
-def test_implausible_endosteal_result_uses_recorded_full_mask_fallback() -> None:
-    """An empty trabecular partition must not escape as an unannotated result."""
+def test_standard_does_not_impose_a_fixed_cortical_peel() -> None:
+    """The old fixed peel must not erase a valid trabecular compartment."""
     params = _standard_outer_parameters()
     params.inner.contour_method = "standard"
     params.inner.peel = 100
 
     masks = generate_masks_from_image(_ring_image(), params)
 
-    assert np.array_equal(sitk_to_numpy_xyz(masks.trab), sitk_to_numpy_xyz(masks.full))
-    assert not np.any(sitk_to_numpy_xyz(masks.cort))
-    assert masks.metadata["endosteal_fallback"]["applied"] is True
-    assert masks.metadata["endosteal_fallback"]["reason"] == "empty_trabecular_mask"
+    assert np.any(sitk_to_numpy_xyz(masks.trab))
+    assert np.any(sitk_to_numpy_xyz(masks.cort))
+    assert masks.metadata["endosteal_fallback"]["applied"] is False
+    params.inner.peel = 0
+    without_peel = generate_masks_from_image(_ring_image(), params)
+    assert np.array_equal(sitk_to_numpy_xyz(masks.trab), sitk_to_numpy_xyz(without_peel.trab))
 
 
 def test_generate_bone_segmentation_returns_a_geometry_preserving_mask() -> None:

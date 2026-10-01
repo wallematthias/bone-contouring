@@ -63,7 +63,13 @@ def smooth_xyz(
         return np.asarray(image_xyz, dtype=np.float32).copy()
     image = numpy_xyz_to_sitk_scalar(image_xyz, spacing_xyz)
     spacing = image.GetSpacing()
-    smoothed = sitk.SmoothingRecursiveGaussian(image, float(sigma) * min(spacing))
+    sigma_mm = float(sigma) * min(spacing)
+    if min(image.GetSize()) < 4:
+        # Recursive Gaussian requires four samples on every axis. Keep physical
+        # units for small ROIs without padding a cropped stack with artificial caps.
+        smoothed = sitk.DiscreteGaussian(image, variance=sigma_mm**2, useImageSpacing=True)
+    else:
+        smoothed = sitk.SmoothingRecursiveGaussian(image, sigma_mm)
     return sitk_to_numpy_xyz(smoothed)
 
 

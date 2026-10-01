@@ -3,10 +3,12 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from .parameters import (
+    BuieParameters,
     ContourParameters,
     InnerContourParameters,
     OuterContourParameters,
     SegmentationParameters,
+    Stable3DParameters,
 )
 from .presets import load_preset, resolve_preset
 from .api import GeneratedMasks, generate_bone_segmentation, generate_masks_from_image
@@ -21,12 +23,14 @@ except PackageNotFoundError:  # pragma: no cover - only used from an uninstalled
 __all__ = [
     "__version__",
     "ContourParameters",
+    "BuieParameters",
     "BoneContouringBatchRow",
     "GeneratedMasks",
     "InnerContourParameters",
     "MaskLabelAlgebraRow",
     "OuterContourParameters",
     "SegmentationParameters",
+    "Stable3DParameters",
     "discover_bone_contouring_batch",
     "discover_mask_label_algebra_batch",
     "generate_bone_segmentation",

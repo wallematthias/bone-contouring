@@ -26,7 +26,7 @@ from bone_imaging_derivatives import (
 from bone_imaging_derivatives.layout import manifest_path, record_output_path, voi_token
 
 from .api import GeneratedMasks, generate_bone_segmentation, generate_masks_from_image
-from .parameters import ContourParameters
+from .parameters import ContourParameters, STANDARD_ALGORITHM_REVISION
 from .presets import load_preset, resolve_preset
 
 _FAMILY = "BoneContours"
@@ -495,13 +495,27 @@ def _sidecar_payload(
 
 
 def _parameters_payload(parameters: ContourParameters) -> dict[str, Any]:
-    return {
+    payload = {
         "modality": parameters.modality,
         "site": parameters.site,
         "segmentation": asdict(parameters.segmentation),
         "outer": asdict(parameters.outer),
         "inner": asdict(parameters.inner),
     }
+    outer_method = parameters.outer.contour_method.strip().lower()
+    inner_method = parameters.inner.contour_method.strip().lower()
+    if "standard" in {outer_method, inner_method}:
+        payload["standard_algorithm"] = STANDARD_ALGORITHM_REVISION
+    # Include effective kernels and physical smoothing for every standard preset.
+    if (parameters.outer.contour_method.strip().lower() == "buie"
+            or inner_method in {"buie", "ipl_match", "stable_3d"}
+            or inner_method == "standard"):
+        payload["buie"] = asdict(parameters.buie)
+    if "stable_3d" in {parameters.outer.contour_method.strip().lower(),
+                       parameters.inner.contour_method.strip().lower()} or (
+                           "standard" in {outer_method, inner_method}):
+        payload["stable_3d"] = asdict(parameters.stable_3d)
+    return payload
 
 
 def _settings_hash(parameters: ContourParameters) -> str:

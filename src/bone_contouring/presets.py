@@ -13,8 +13,8 @@ from .parameters import ContourParameters
 _MODALITIES = {"xct1", "xct2"}
 _SITES = {"radius", "tibia", "knee"}
 _SEGMENTATION_METHODS = {"laplace_hamming", "gauss", "adaptive"}
-_OUTER_CONTOUR_METHODS = {"standard", "geodesic"}
-_INNER_CONTOUR_METHODS = {"standard", "none"}
+_OUTER_CONTOUR_METHODS = {"standard", "geodesic", "buie", "ipl_match", "stable_3d"}
+_INNER_CONTOUR_METHODS = {"standard", "none", "buie", "ipl_match", "stable_3d"}
 
 
 def _choice(value: str, allowed: set[str], label: str) -> str:
@@ -61,6 +61,16 @@ def resolve_preset(
     else:
         params.outer.periosteal_kernel_size = 5
         params.outer.periosteal_open_radius = 2
+    # Threshold calibration is site-specific; the repaired standard algorithm is not.
+    calibrated_xct2 = modality == "xct2" and site in {"radius", "tibia"}
+    if outer_contour in {"ipl_match", "stable_3d"} or (calibrated_xct2 and outer_contour == "standard"):
+        params.outer.periosteal_threshold = 320.0
+        params.outer.gaussian_sigma = 0.8
+    if inner_contour == "stable_3d" or (calibrated_xct2 and inner_contour == "standard"):
+        # Fixed experimental candidate selected on radius C1, not an IPL recipe.
+        params.inner.endosteal_threshold = 380.0
+        params.inner.gaussian_sigma = 0.8
+        params.buie.endosteal_kernel_size = (31, 31, 1)
     return params
 
 
@@ -132,6 +142,8 @@ def _params_from_user_profile(profile: dict[str, Any], *, override_site: str = "
         _update_dataclass(params.outer, payload.get("outer", {}))
         _update_dataclass(params.inner, payload.get("inner", {}))
         _update_dataclass(params.segmentation, payload.get("segmentation", {}))
+        _update_dataclass(params.buie, payload.get("buie", {}))
+        _update_dataclass(params.stable_3d, payload.get("stable_3d", {}))
         return params
     if schema == "bone-contouring-profile-v1":
         payload = dict(profile.get("contour_parameters") or {})
@@ -148,6 +160,8 @@ def _params_from_user_profile(profile: dict[str, Any], *, override_site: str = "
         _update_dataclass(params.outer, settings.get("outer", {}))
         _update_dataclass(params.inner, settings.get("inner", {}))
         _update_dataclass(params.segmentation, settings.get("segmentation", {}))
+        _update_dataclass(params.buie, settings.get("buie", {}))
+        _update_dataclass(params.stable_3d, settings.get("stable_3d", {}))
         return params
     raise ValueError(f"Unsupported bone contouring profile schema: {schema!r}.")
 

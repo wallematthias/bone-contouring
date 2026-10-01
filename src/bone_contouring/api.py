@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import SimpleITK as sitk
 
 from ._arrays import (
-    contour_support_xyz,
-    inner_contour_xyz,
     numpy_xyz_to_sitk_binary,
-    outer_contour_xyz,
     segment_bone_xyz,
     sitk_to_numpy_xyz,
 )
@@ -63,18 +60,6 @@ def _geodesic_outer_contour(
     return full, {"support_mask_count": len(support_masks)}
 
 
-def _valid_partition(full: np.ndarray, trab: np.ndarray, cort: np.ndarray) -> tuple[bool, str | None]:
-    if not np.any(full):
-        return True, None
-    if not np.any(trab):
-        return False, "empty_trabecular_mask"
-    if np.any(trab & cort) or np.any((trab | cort) & ~full):
-        return False, "invalid_compartment_partition"
-    if float(trab.sum()) / float(full.sum()) < 0.01:
-        return False, "implausibly_small_trabecular_fraction"
-    return True, None
-
-
 def _numpy_xyz_to_sitk_label(label_xyz: np.ndarray, reference: sitk.Image) -> sitk.Image:
     """Create a uint8 label image with geometry copied from ``reference``."""
     image = sitk.GetImageFromArray(np.transpose(np.asarray(label_xyz, dtype=np.uint8), (2, 1, 0)))
@@ -98,89 +83,75 @@ def generate_masks_from_image(
     segmentation_xyz = sitk_to_numpy_xyz(segmentation_source)
     if segmentation_xyz.shape != density_xyz.shape:
         raise ValueError("segmentation_image size must match image size.")
-    aligned_support_enabled = bool(params.segmentation.use_segmentation_aligned_contour_support)
     segmentation_method = params.segmentation.method.strip().lower()
     if segmentation_method in {"global", "seg_gauss"}:
         segmentation_method = "gauss"
+    # Retain requested support provenance, although it no longer drives standard envelopes.
     support_method = (params.segmentation.contour_support_method or segmentation_method).strip().lower()
     if support_method in {"global", "seg_gauss"}:
         support_method = "gauss"
-    support_params = replace(params.segmentation, method=support_method)
-    support_source_xyz = segmentation_xyz if support_method == "laplace_hamming" else density_xyz
-    reusable_segmentation_support = None
 
     outer_method = params.outer.contour_method.strip().lower()
     outer_metadata: dict[str, Any] = {}
+    from .parameters import STANDARD_ALGORITHM_REVISION
     if outer_method == "standard":
-        outer_support = None
-        if aligned_support_enabled:
-            outer_support = contour_support_xyz(
-                support_source_xyz,
-                support_params,
-                spacing_xyz=spacing_xyz,
-                role="outer",
-            )
-            if segmentation_method == "laplace_hamming" and support_method == "laplace_hamming":
-                reusable_segmentation_support = outer_support
-        full_xyz = outer_contour_xyz(
-            density_xyz,
-            params.outer,
-            spacing_xyz=spacing_xyz,
-            support_mask_xyz=outer_support,
-        )
-        outer_metadata = {
-            "support": "segmentation_aligned" if outer_support is not None else "image_threshold",
-            "outer_method": segmentation_method if outer_support is not None else None,
-        }
+        from . import _stable_3d
+        full_xyz, outer_metadata = _stable_3d.outer_contour_xyz(
+            density_xyz, params.outer, params.stable_3d, spacing_xyz=spacing_xyz)
+        outer_metadata["algorithm_revision"] = STANDARD_ALGORITHM_REVISION
     elif outer_method == "geodesic":
         full_xyz, outer_metadata = _geodesic_outer_contour(density_xyz, params, spacing_xyz)
+    elif outer_method == "buie":
+        from . import _buie
+        full_xyz, outer_metadata = _buie.outer_contour_xyz(
+            density_xyz, params.outer.periosteal_threshold, params.buie)
+    elif outer_method == "ipl_match":
+        from . import _ipl_match
+        full_xyz, outer_metadata = _ipl_match.outer_contour_xyz(
+            density_xyz, params.outer, spacing_xyz=spacing_xyz)
+    elif outer_method == "stable_3d":
+        from . import _stable_3d
+        full_xyz, outer_metadata = _stable_3d.outer_contour_xyz(
+            density_xyz, params.outer, params.stable_3d, spacing_xyz=spacing_xyz)
     else:
         raise ValueError(f"Unsupported outer contour method: {params.outer.contour_method!r}.")
 
     inner_method = params.inner.contour_method.strip().lower()
     fallback = {"applied": False, "reason": None}
+    inner_metadata: dict[str, Any] = {}
     if inner_method == "none":
         trab_xyz = full_xyz.copy()
         cort_xyz = np.zeros_like(full_xyz)
     elif inner_method == "standard":
-        inner_support = None
-        if aligned_support_enabled:
-            if segmentation_method == "laplace_hamming" and reusable_segmentation_support is not None:
-                inner_support = np.asarray(reusable_segmentation_support, dtype=bool) & full_xyz
-            else:
-                inner_support = contour_support_xyz(
-                    support_source_xyz,
-                    support_params,
-                    spacing_xyz=spacing_xyz,
-                    full_mask_xyz=full_xyz,
-                    role="inner",
-                )
-        trab_xyz, cort_xyz = inner_contour_xyz(
-            density_xyz,
-            full_xyz,
-            params.inner,
-            spacing_xyz=spacing_xyz,
-            support_mask_xyz=inner_support,
-        )
-        valid_partition, reason = _valid_partition(full_xyz, trab_xyz, cort_xyz)
-        if not valid_partition:
-            trab_xyz = full_xyz.copy()
-            cort_xyz = np.zeros_like(full_xyz)
-            fallback = {"applied": True, "reason": reason}
+        from . import _stable_3d
+        trab_xyz, cort_xyz, inner_metadata = _stable_3d.inner_contour_xyz(
+            density_xyz, full_xyz, params.inner, params.buie, params.stable_3d,
+            spacing_xyz=spacing_xyz)
+        inner_metadata["algorithm_revision"] = STANDARD_ALGORITHM_REVISION
+    elif inner_method == "buie":
+        from . import _buie
+        trab_xyz, cort_xyz, inner_metadata = _buie.inner_contour_xyz(
+            density_xyz, full_xyz, params.inner.endosteal_threshold, params.buie)
+    elif inner_method == "ipl_match":
+        from . import _ipl_match
+        trab_xyz, cort_xyz, inner_metadata = _ipl_match.inner_contour_xyz(
+            density_xyz, full_xyz, params.inner, params.buie)
+    elif inner_method == "stable_3d":
+        from . import _stable_3d
+        trab_xyz, cort_xyz, inner_metadata = _stable_3d.inner_contour_xyz(
+            density_xyz, full_xyz, params.inner, params.buie, params.stable_3d,
+            spacing_xyz=spacing_xyz)
     else:
         raise ValueError(f"Unsupported inner contour method: {params.inner.contour_method!r}.")
 
-    if segmentation_method == "laplace_hamming" and reusable_segmentation_support is not None:
-        seg_xyz = np.asarray(reusable_segmentation_support, dtype=bool) & full_xyz
-    else:
-        seg_xyz = segment_bone_xyz(
-            segmentation_xyz,
-            full_xyz,
-            trab_xyz,
-            cort_xyz,
-            params.segmentation,
-            spacing_xyz=spacing_xyz,
-        )
+    seg_xyz = segment_bone_xyz(
+        segmentation_xyz,
+        full_xyz,
+        trab_xyz,
+        cort_xyz,
+        params.segmentation,
+        spacing_xyz=spacing_xyz,
+    )
     material_xyz = np.zeros(seg_xyz.shape, dtype=np.uint8)
     seg_bool = np.asarray(seg_xyz, dtype=bool)
     material_xyz[seg_bool & np.asarray(trab_xyz, dtype=bool)] = 100
@@ -194,6 +165,7 @@ def generate_masks_from_image(
         "endosteal_contour_method": inner_method,
         "endosteal_fallback": fallback,
         "outer_contour": outer_metadata,
+        "inner_contour": inner_metadata,
         "contour_support": outer_metadata,
         "material_labels": {
             "100": "segmentation_intersect_trabecular_mask",
