@@ -186,9 +186,13 @@ The inner stage independently filters density, thresholds below its configured
 endosteal threshold inside full, keeps the largest 3D marrow component, dilates
 with the configured ellipsoidal **dimension** footprint, fills axial holes, then erodes
 with the same footprint and clips to full. `params.buie.endosteal_kernel_size`
-and `fully_connected` control these operations. It does not impose a cortical
-peel, so `inner.peel`, `trabecular_close_radius`, `endosteal_kernel_size`, and
-`use_adaptive_threshold` do not control this method. Other Buie smoothing and
+and `fully_connected` control these operations. After distance smoothing and final
+hole filling, trab is constrained to an XY-eroded full ROI (`inner.peel=3` by
+default), preserving a minimum cortical **compartment** rim without peeling Z
+end slices. This is not a measured cortical bone thickness or a requirement of
+the original Buie method. Set `inner.peel=0` explicitly to disable the constraint.
+`trabecular_close_radius`, `endosteal_kernel_size`, and `use_adaptive_threshold`
+do not control this method. Other Buie smoothing and
 median/periosteal fields are not used. The threshold and closing candidate were
 selected using radius C1 development comparisons: XCTII radius/tibia use sigma
 `0.8`, threshold `380`, and footprint `(31, 31, 1)`. XCTI and knee preserve their
@@ -209,7 +213,7 @@ topology, or volume guarantee; it also does not bound the earlier repair stages.
 Zero smoothing sigma or a zero change-band limit disables regularization.
 Closing and filling remain axial; this is not full-3D morphological closing.
 Final axial filling removes enclosed holes reintroduced by regularization,
-followed by clipping trabecular ROI to full. The final filling is an envelope
+followed by clipping trabecular ROI to the XY-peeled full ROI. The final filling is an envelope
 repair, not a boundary-displacement guarantee.
 Cortex is exactly full minus trabecular ROI, including any disconnected remnants.
 
@@ -222,7 +226,7 @@ contours, especially when trabecular ROI reaches the outer boundary.
 
 Use calibrated density and the image API to force regeneration. Existing batch
 mask reuse is unchanged; existing masks are not automatically regenerated.
-Settings hashes and provenance include `standard_algorithm=topology_first_v1`
+Settings hashes and provenance include `standard_algorithm=topology_first_v2`
 and the effective kernel/regularization settings for the replacement standard.
 Tissue-segmentation methods/settings are unchanged; their contour-support
 override no longer drives this standard's envelopes. Select `--method standard` in the read-only benchmark

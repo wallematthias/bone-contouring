@@ -107,21 +107,31 @@ def test_uniform_masks_and_zero_sigma_do_not_create_phantom_boundaries(value):
     assert np.array_equal(out, mask)
 
 
-def test_inner_does_not_impose_the_legacy_fixed_cortical_peel():
-    # One-voxel cortex must not be replaced with a mandatory three-voxel rim.
+@pytest.mark.parametrize('peel', [0, 3, 10])
+def test_inner_honors_the_minimum_cortical_peel(peel):
     p = params()
     p.outer.gaussian_sigma = p.inner.gaussian_sigma = 0
     p.outer.periosteal_kernel_size = 0
     p.stable_3d.outer_sigma_mm = p.stable_3d.inner_sigma_mm = (0., 0., 0.)
     p.buie.endosteal_kernel_size = (1, 1, 1)
     p.segmentation.enabled = False
+    p.inner.peel = peel
     masks = generate_masks_from_image(image(shell()), p)
     trab = sitk.GetArrayFromImage(masks.trab).astype(bool)
-    assert trab[:, 10, 20].all()
+    assert trab[:, 8 + max(1, peel), 20].all()
     assert not trab[:, 8, 20].any()
-    p.inner.peel = 10
-    again = generate_masks_from_image(image(shell()), p)
-    assert np.array_equal(trab, sitk.GetArrayFromImage(again.trab).astype(bool))
+    if peel:
+        assert not trab[:, 8 + peel - 1, 20].any()
+
+
+@pytest.mark.parametrize('peel', [-1, 1.5, True, float('nan')])
+def test_invalid_minimum_peel_is_rejected(peel):
+    from bone_contouring import _stable_3d
+    p = params()
+    p.inner.peel = peel
+    with pytest.raises(ValueError, match='peel.*nonnegative integer'):
+        _stable_3d.inner_contour_xyz(shell(), shell() > 0, p.inner, p.buie,
+                                    p.stable_3d, spacing_xyz=(.06, .06, .06))
 
 
 def test_empty_marrow_is_reported_without_synthetic_fallback():

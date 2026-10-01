@@ -181,20 +181,20 @@ def test_none_inner_contour_assigns_full_mask_to_trabecular_compartment() -> Non
     assert masks.metadata["endosteal_contour_method"] == "none"
 
 
-def test_standard_does_not_impose_a_fixed_cortical_peel() -> None:
-    """The old fixed peel must not erase a valid trabecular compartment."""
+def test_oversized_standard_peel_does_not_fall_back_to_full_trab() -> None:
+    """An empty peeled ROI must retain cortex, not silently undo the peel."""
     params = _standard_outer_parameters()
     params.inner.contour_method = "standard"
     params.inner.peel = 100
 
     masks = generate_masks_from_image(_ring_image(), params)
 
-    assert np.any(sitk_to_numpy_xyz(masks.trab))
-    assert np.any(sitk_to_numpy_xyz(masks.cort))
+    assert not np.any(sitk_to_numpy_xyz(masks.trab))
+    assert np.array_equal(sitk_to_numpy_xyz(masks.cort), sitk_to_numpy_xyz(masks.full))
     assert masks.metadata["endosteal_fallback"]["applied"] is False
     params.inner.peel = 0
     without_peel = generate_masks_from_image(_ring_image(), params)
-    assert np.array_equal(sitk_to_numpy_xyz(masks.trab), sitk_to_numpy_xyz(without_peel.trab))
+    assert np.any(sitk_to_numpy_xyz(without_peel.trab))
 
 
 def test_generate_bone_segmentation_returns_a_geometry_preserving_mask() -> None:

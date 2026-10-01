@@ -156,6 +156,10 @@ def outer_contour_xyz(density, parameters, stable, *, spacing_xyz):
 def inner_contour_xyz(density, full, parameters, buie, stable, *, spacing_xyz):
     validate_parameters(stable)
     _buie.validate_parameters(buie)
+    if (isinstance(parameters.peel, (bool, np.bool_))
+            or not isinstance(parameters.peel, (int, np.integer)) or parameters.peel < 0):
+        raise ValueError('Inner peel must be a nonnegative integer radius.')
+    peel = int(parameters.peel)
     spacing = _triple(spacing_xyz, 'spacing_xyz', positive=True)
     density = _density_and_threshold(density, parameters.endosteal_threshold, parameters.gaussian_sigma)
     full = np.asarray(full, dtype=bool)
@@ -185,15 +189,24 @@ def inner_contour_xyz(density, full, parameters, buie, stable, *, spacing_xyz):
                         marrow, spacing, stable.inner_sigma_mm, stable.max_boundary_shift_mm)
     trab &= full
     trab = _buie._timed(timings, 'endosteal_final_fill_xy', _arrays.fill_holes_xy, trab)
-    trab &= full
+    # Apply last: smoothing/filling must not expand trab into the minimum
+    # cortical compartment rim. XY erosion preserves the stack's Z end slices.
+    if peel >= min(full.shape[:2]):
+        peeled_full = np.zeros_like(full)
+    else:
+        peeled_full = _buie._timed(timings, 'periosteal_peel_xy', _arrays._apply_xy_morphology,
+                                  full, peel, 'erode')
+    trab &= peeled_full
     quality = _buie._timed(timings, 'quality', mask_quality_xyz, trab, spacing, stable)
     return trab, full & ~trab, {'experimental': True, 'native_ipl_equivalence': False,
                               'threshold': float(parameters.endosteal_threshold),
                               'density_gaussian_sigma_voxels': float(parameters.gaussian_sigma),
+                              'peel_xy_radius_voxels': peel,
                               'parameters': asdict(stable), 'closing_dimensions_xyz': buie.endosteal_kernel_size,
                               'initial_marrow_voxels': initial, 'selected_marrow_voxels': selected,
                               'initial_marrow_component_count': int(count), 'stage_seconds': timings, 'quality': quality,
-                              'ignored_legacy_controls': ['peel', 'trabecular_close_radius', 'endosteal_kernel_size', 'use_adaptive_threshold'],
+                              'ignored_legacy_controls': ['trabecular_close_radius', 'endosteal_kernel_size', 'use_adaptive_threshold'],
                               'deviations_from_buie': ['prefiltered density marrow seed', 'largest marrow component',
                                                        'axial fill before erosion', 'final axial envelope filling',
+                                                       'final axial minimum cortical compartment peel',
                                                        'symmetric signed-distance smoothing instead of uint8 100/255 smoothing']}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — 2026-10-01
+
+- Restore the default 3-voxel axial minimum cortical compartment peel in standard/stable-3D contouring, applied after smoothing and hole filling. Preserve Z end slices and explicit `inner.peel=0` overrides.
+- Record the effective peel radius and advance standard algorithm provenance/settings hashes to `topology_first_v2`.
+- Add regressions for low-density full/trab collapse, all scanner/site defaults, peel overrides/validation, and empty peeled ROIs without fallback.
+
 ## 0.2.0 — 2026-10-01
 
 - Replace standard contouring across XCTI/XCTII radius, tibia, and knee with the shared topology-first implementation. Preserve site-specific density and tissue-segmentation settings; no legacy standard selector remains.

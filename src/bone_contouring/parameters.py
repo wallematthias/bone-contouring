@@ -30,7 +30,7 @@ class InnerContourParameters:
     endosteal_kernel_size: int = 3
     gaussian_sigma: float = 1.5
     use_adaptive_threshold: bool = False
-    peel: int = 3
+    peel: int = 3  # Minimum cortical compartment rim: axial XY erosion radius.
     trabecular_close_radius: int | None = None
 
 
@@ -111,4 +111,4 @@ class ContourParameters:
     stable_3d: Stable3DParameters = field(default_factory=Stable3DParameters)
 
 
-STANDARD_ALGORITHM_REVISION = "topology_first_v1"
+STANDARD_ALGORITHM_REVISION = "topology_first_v2"
