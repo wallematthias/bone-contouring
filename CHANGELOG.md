@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 — 2026-10-02
+
+- Keep AIM-dependent U-Net batch tests optional in base-package environments and include them explicitly in the dedicated U-Net CI job. Scientific runtime behaviour is unchanged from 0.3.2.
+
 ## 0.3.2 — 2026-10-02
 
 - Add a normalized U-Net batch recipe that writes published radius/tibia compartments plus XCTII Laplace–Hamming tissue SEG and FEA material labels in one run, using native AIM intensities and standard BoneContours naming/manifests.

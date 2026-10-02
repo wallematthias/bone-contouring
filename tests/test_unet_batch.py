@@ -3,8 +3,9 @@ import sys
 import types
 
 import numpy as np
-import py_aimio
 import pytest
+
+py_aimio = pytest.importorskip("py_aimio")
 
 
 def _case(root, voi="radiusleft", stack=1):
