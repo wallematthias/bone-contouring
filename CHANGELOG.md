@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — Unreleased
+## 0.3.0 — 2026-10-02
 
 - Add fixed-default published HR-pQCT U-Net inference as optional `bone-contouring[unet]`, with CPU/CUDA/MPS, verified weights, native AIM batch CLI and a scene worker. Preserve Neeteson et al.'s model/morphology and attribution; no Bonelab/vtkbone dependency.
 - Publish complete AIM files exclusively and atomically, sidecars first and completion marker last. Depend on bone-imaging-derivatives 0.1.6 for completion-gated discovery.
