@@ -6,7 +6,7 @@ import types
 import numpy as np
 import SimpleITK as sitk
 
-from bone_contouring import ContourParameters, generate_bone_segmentation, generate_masks_from_image
+from bone_contouring import ContourParameters, generate_bone_segmentation, generate_masks_from_image, resolve_preset
 from bone_contouring._arrays import sitk_to_numpy_xyz
 
 
@@ -39,6 +39,35 @@ def _standard_outer_parameters() -> ContourParameters:
     params.segmentation.cort_threshold = 500.0
     params.segmentation.min_size_voxels = 0
     return params
+
+
+def test_standard_contours_and_gaussian_tissue_each_filter_raw_density(monkeypatch):
+    """Contour prefilters must never become the source of the tissue prefilter."""
+    from bone_contouring import _arrays
+
+    image = _ring_image()
+    raw = sitk_to_numpy_xyz(image).copy()
+    calls = []
+    smooth = _arrays.smooth_xyz
+
+    def record(source, *, sigma, spacing_xyz=None):
+        calls.append((np.array(source, copy=True), sigma))
+        return smooth(source, sigma=sigma, spacing_xyz=spacing_xyz)
+
+    monkeypatch.setattr(_arrays, "smooth_xyz", record)
+    params = resolve_preset(modality="xct2", site="radius", segmentation="gauss")
+    params.segmentation.min_size_voxels = 0
+    params.segmentation.keep_largest_component = False
+    masks = generate_masks_from_image(image, params)
+    assert [sigma for _, sigma in calls] == [.8, .8, 1.2]
+    for source, _ in calls:
+        np.testing.assert_array_equal(source, raw)
+    np.testing.assert_array_equal(sitk_to_numpy_xyz(image), raw)
+    once = sitk_to_numpy_xyz(sitk.SmoothingRecursiveGaussian(image, 1.2 * min(image.GetSpacing())))
+    trab, cort, full = (sitk_to_numpy_xyz(mask) > 0 for mask in (masks.trab, masks.cort, masks.full))
+    expected = (((once >= 320) & trab) | ((once >= 450) & cort)) & full
+    assert expected.any()
+    np.testing.assert_array_equal(sitk_to_numpy_xyz(masks.seg) > 0, expected)
 
 
 def test_generate_masks_fills_full_mask_holes_and_preserves_geometry() -> None:

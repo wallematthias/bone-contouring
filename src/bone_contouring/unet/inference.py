@@ -1,5 +1,6 @@
 """Fixed-default BMD arrays -> compartment masks using the published model."""
 import os
+from time import perf_counter
 
 import numpy as np
 import torch
@@ -90,7 +91,9 @@ class Segmenter:
                 trab[:,:,z] = self._bridge.mask(phi[1] < 0)
                 report(f"Slices {z+1}/{image.shape[2]}")
         report("Post-processing with published defaults...")
-        cort, trab = postprocess(image, cort, trab)
+        started = perf_counter()
+        cort, trab = postprocess(image, cort, trab, progress=report)
+        report(f"Post-processing completed in {perf_counter()-started:.1f} s")
         masks = {"cort": cort[crop], "trab": trab[crop]}
         for role, mask in masks.items():
             if not np.any(mask):

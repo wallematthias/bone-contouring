@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 — 2026-10-02
+
+- Support manually configured `custom` recipes and site `none` in scene-exported/batch profiles, preserving user thresholds in input image units without XCTII site calibration. No built-in micro-CT preset is provided.
+- Set Gaussian tissue-segmentation sigma to 1.2 voxels with trabecular/cortical thresholds 320/450 mg HA/cm³, matching the archived compartment-based settings. Keep contour prefilters and explicit custom overrides unchanged; add numerical single-filter regressions.
+- Retain disconnected bone in tissue SEG instead of selecting its largest component. Accept but ignore the legacy `keep_largest_component` setting; preserve minimum-size noise cleanup and contour-specific component selection. Connectivity filtering remains downstream FEA preprocessing.
+- Accelerate published U-Net post-processing by batching repeated morphology into compiled SciPy iterations. Preserve all scientific defaults, 3D connectivity, boundary handling, padding and compartment outputs; reduce single-step morphology dispatches from 224 to 49.
+- Report four post-processing stages and total elapsed time through existing scene/batch progress callbacks.
+- Add voxel-exact boundary/degenerate-mask regressions and a read-only benchmark against the published morphology fixture.
+- Reject scene U-Net recipes in the standard custom-profile loader so they cannot silently run a different contouring algorithm; use the dedicated U-Net CLI or batch profile.
+
 ## 0.3.0 — 2026-10-02
 
 - Add fixed-default published HR-pQCT U-Net inference as optional `bone-contouring[unet]`, with CPU/CUDA/MPS, verified weights, native AIM batch CLI and a scene worker. Preserve Neeteson et al.'s model/morphology and attribution; no Bonelab/vtkbone dependency.

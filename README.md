@@ -30,6 +30,17 @@ fail clearly. The only inference control is device; published preprocessing,
 five-slice channels, model and morphology are unchanged. XCT-I and knee accuracy,
 and equivalence to scanner/IPL contours, are not established.
 
+Post-processing runs on the CPU even when inference uses CUDA/MPS. Repeated
+erosions/dilations are batched into compiled SciPy iterations with the same
+3D connectivity, border handling, padding and iteration counts; no smoothing
+or compartment defaults are reduced. Progress reports the four morphology
+stages and their total elapsed time. A read-only source-checkout benchmark
+compares masks voxel-for-voxel against the published implementation:
+
+```bash
+python benchmarks/benchmark_unet_postprocessing.py
+```
+
 First use downloads SHA256-verified `radius_tibia_final.pth` to the shared cache.
 Use `HRPQCT_SEGMENTATION_MODEL_DIR` to share a pre-provisioned cache, or
 `HRPQCT_SEGMENTATION_WEIGHTS` for a verified explicit weights file. Slicer stores
@@ -60,6 +71,12 @@ from bone_contouring import generate_masks_from_image, resolve_preset
 masks = generate_masks_from_image(image, resolve_preset(modality="xct1", site="radius"))
 ```
 
+For manually configured images, use `resolve_preset(modality="custom", site="none",
+segmentation="gauss")` and set thresholds in the input image's units. Custom
+recipes do not apply XCTII radius/tibia threshold calibration. Users can save
+their own named profiles (for example, for micro-CT) for scene and batch use;
+there is no built-in micro-CT preset.
+
 ## Experimental Buie dual-threshold contours
 
 The opt-in `buie` stages implement the filter sequence in Buie et al.,
@@ -83,6 +100,17 @@ Contours threshold the original density image independently of final bone
 segmentation. Standard adaptive thresholds, Gaussian prefilters, peel, and
 segmentation-aligned contour support are ignored by the selected Buie stage.
 Do not supply a native-gray image while interpreting thresholds as mg HA/cm³.
+
+Gaussian **tissue segmentation** defaults to a single filter of the original
+density image with sigma **1.2 voxels**, followed by thresholds of **320 mg HA/cm³
+in trabecular** and **450 mg HA/cm³ in cortical** compartments. Sigma is scaled
+by the smallest voxel spacing; it is not specified in millimetres. Contour
+prefilters and signed-distance smoothing are separate and do not pre-smooth
+the tissue input. Explicit custom-profile settings remain unchanged.
+Tissue SEG retains disconnected bone components; largest-component selection
+belongs to downstream FEA preparation and is never applied here. The legacy
+`segmentation.keep_largest_component` field is accepted but ignored, including
+in saved profiles. The separate 64-voxel minimum-component noise filter remains.
 
 `params.buie` exposes median dimensions `(3,3,1)`, periosteal morphology
 dimensions `(15,15,1)`, endosteal morphology dimensions `(10,10,1)`, Gaussian

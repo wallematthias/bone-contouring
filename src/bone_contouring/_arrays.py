@@ -152,8 +152,8 @@ def segment_bone_xyz(
     else:
         raise ValueError(f"Unsupported segmentation method: {parameters.method!r}.")
     segmentation = remove_small_components_xyz(segmentation & full, parameters.min_size_voxels)
-    if method != "laplace_hamming" and parameters.keep_largest_component:
-        segmentation = largest_component_xyz(segmentation)
+    # Disconnected tissue is valid bone. Connectivity filtering for mechanical
+    # models belongs to FEA preparation, never the reusable tissue SEG.
     return np.ascontiguousarray(segmentation, dtype=bool)
 
 

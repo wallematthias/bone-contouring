@@ -3,6 +3,7 @@ from __future__ import annotations
 from importlib.metadata import version
 
 import bone_contouring
+import pytest
 from bone_contouring import (
     ContourParameters,
     InnerContourParameters,
@@ -11,6 +12,53 @@ from bone_contouring import (
     load_preset,
     resolve_preset,
 )
+
+
+def test_scene_unet_recipe_cannot_silently_run_as_standard_contouring():
+    from bone_contouring.presets import _params_from_user_profile
+    with pytest.raises(ValueError, match="U-Net"):
+        _params_from_user_profile({"schema": "bone-contour-recipe-v1", "contouring_method": "unet",
+                                  "modality": "xct2", "site": "radius"})
+
+
+def test_custom_manual_recipe_preserves_units_and_no_site():
+    from bone_contouring.presets import _params_from_user_profile
+
+    params = _params_from_user_profile({
+        "schema": "bone-contour-recipe-v1", "modality": "custom", "site": "none",
+        "methods": {"bone_segmentation": "seg_gauss", "periosteal_contour": "standard",
+                    "endosteal_contour": "standard"},
+        "parameters": {"outer": {"periosteal_threshold": 1200},
+                       "inner": {"endosteal_threshold": 1800},
+                       "segmentation": {"trab_threshold": 1500, "cort_threshold": 2000}},
+    })
+    assert params.modality == "custom" and params.site == "none"
+    assert params.outer.periosteal_threshold == 1200
+    assert params.inner.endosteal_threshold == 1800
+    assert params.segmentation.trab_threshold == 1500
+    assert params.segmentation.cort_threshold == 2000
+
+
+def test_custom_does_not_apply_xct2_radius_calibration():
+    params = resolve_preset(modality="custom", site="radius", segmentation="gauss")
+    assert params.outer.periosteal_threshold == OuterContourParameters().periosteal_threshold
+    assert params.inner.endosteal_threshold == InnerContourParameters().endosteal_threshold
+
+
+def test_named_user_microct_profile_keeps_custom_settings_in_batch(tmp_path):
+    from bone_imaging_derivatives import save_json_profile
+
+    save_json_profile("bone-contouring", "My Micro-CT", {
+        "schema": "bone-contour-recipe-v1", "modality": "custom", "site": "none",
+        "methods": {"bone_segmentation": "seg_gauss", "periosteal_contour": "standard",
+                    "endosteal_contour": "standard"},
+        "parameters": {"inner": {"endosteal_threshold": 1800},
+                       "segmentation": {"trab_threshold": 1500}},
+    }, root=tmp_path)
+    params = load_preset("My Micro-CT", site="tibia", profile_root=tmp_path)
+    assert params.modality == "custom"
+    assert params.inner.endosteal_threshold == 1800
+    assert params.segmentation.trab_threshold == 1500
 
 
 def test_root_api_exports_parameter_types_and_preset_helpers() -> None:

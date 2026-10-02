@@ -136,3 +136,29 @@ def test_numpy_abi_fallback_preserves_tensor_values(monkeypatch):
     tensor = bridge.input(values)
     np.testing.assert_array_equal(tensor.tolist(), values)
     np.testing.assert_array_equal(bridge.mask(tensor < 0), values < 0)
+
+
+def test_segmenter_forwards_postprocessing_stages_to_scene_and_batch():
+    from bone_contouring.unet.inference import Segmenter, _TensorBridge
+
+    class AnalyticCompartments(torch.nn.Module):
+        # Replace only the expensive learned predictor; execute tensor transfer,
+        # masking, morphology, cropping, and progress forwarding for real.
+        def forward(self, channels):
+            x = torch.arange(channels.shape[-2], device=channels.device)[:, None]
+            y = torch.arange(channels.shape[-1], device=channels.device)[None, :]
+            radius2 = (x-31.5)**2 + (y-31.5)**2
+            return torch.stack((radius2-26**2, radius2-18**2))[None]
+
+    segmenter = Segmenter.__new__(Segmenter)
+    segmenter.device = torch.device("cpu")
+    segmenter._bridge = _TensorBridge()
+    segmenter.model = AnalyticCompartments()
+    messages = []
+    masks = segmenter.segment(np.full((3, 64, 64), 300.), progress=messages.append)
+    assert masks["full"].shape == (3, 64, 64)
+    assert masks["trab"].any() and masks["cort"].any()
+    assert not (masks["trab"] & masks["cort"]).any()
+    for stage in ("1/4", "2/4", "3/4", "4/4"):
+        assert any(stage in message for message in messages)
+    assert any("Post-processing completed" in message for message in messages)

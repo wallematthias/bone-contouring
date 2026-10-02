@@ -41,14 +41,16 @@ class SegmentationParameters:
     enabled: bool = True
     method: str = "gauss"
     contour_support_method: str = ""
-    gaussian_sigma: float = 0.8
+    gaussian_sigma: float = 1.2
     trab_threshold: float = 320.0
     cort_threshold: float = 450.0
     adaptive_low_threshold: float = 190.0
     adaptive_high_threshold: float = 450.0
     adaptive_block_size: int = 13
     min_size_voxels: int = 64
-    keep_largest_component: bool = True
+    # Legacy profile/API compatibility only; tissue SEG ignores this field.
+    # Largest-component selection belongs to downstream FEA preparation.
+    keep_largest_component: bool = False
     laplace_hamming_low_pass_cutoff: float = 0.3
     laplace_hamming_high_pass_cutoff: float = 0.0
     laplace_hamming_threshold: float = 15564.0

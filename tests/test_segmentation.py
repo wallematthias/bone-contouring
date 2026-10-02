@@ -2,10 +2,42 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+import SimpleITK as sitk
 
-from bone_contouring import SegmentationParameters
+from bone_contouring import ContourParameters, SegmentationParameters, generate_bone_segmentation, resolve_preset
 from bone_contouring._arrays import adaptive_threshold_xyz, segment_bone_xyz
 from bone_contouring.laplace_hamming import LaplaceHammingParameters, laplace_hamming_binarize_xyz
+
+
+@pytest.mark.parametrize("preset", [None, "xct1", "xct2"])
+def test_default_gaussian_tissue_segmentation_matches_one_1_2_voxel_filter(preset):
+    """Default tissue thresholds operate on raw density smoothed exactly once."""
+    density = np.random.default_rng(42).uniform(0, 700, (9, 25, 25)).astype(np.float32)
+    density[:, 5:10, 4:21] += 500
+    image = sitk.GetImageFromArray(density)
+    image.SetSpacing((.0607,) * 3)
+    trab = np.zeros_like(density, dtype=np.uint8)
+    trab[:, :, :13] = 1
+    cort = 1 - trab
+    masks = {}
+    for role, array in (("full", trab | cort), ("trab", trab), ("cort", cort)):
+        masks[role + "_mask"] = sitk.GetImageFromArray(array)
+        masks[role + "_mask"].CopyInformation(image)
+    parameters = ContourParameters() if preset is None else resolve_preset(modality=preset, segmentation="gauss")
+    # Isolate smoothing/thresholds from the separately tested component cleanup.
+    parameters.segmentation.min_size_voxels = 0
+    parameters.segmentation.keep_largest_component = False
+    smoothed = sitk.SmoothingRecursiveGaussian(image, 1.2 * .0607)
+    once = sitk.GetArrayFromImage(smoothed)
+    twice = sitk.GetArrayFromImage(sitk.SmoothingRecursiveGaussian(smoothed, 1.2 * .0607))
+    def threshold(values):
+        return ((values >= 320) & (trab > 0)) | ((values >= 450) & (cort > 0))
+
+    expected = threshold(once)
+    assert np.any(expected & (trab > 0)) and np.any(expected & (cort > 0))
+    assert not np.array_equal(expected, threshold(twice)), "Fixture must detect double filtering"
+    result = generate_bone_segmentation(image, parameters, **masks)
+    np.testing.assert_array_equal(sitk.GetArrayFromImage(result) > 0, expected)
 
 
 def test_gaussian_segmentation_cleans_small_components_and_stays_in_full_mask() -> None:
@@ -28,6 +60,24 @@ def test_gaussian_segmentation_cleans_small_components_and_stays_in_full_mask() 
     assert result[2:5, 2:5, 2:5].all()
     assert not result[7, 7, 7]
     assert not np.any(result & ~full)
+
+
+@pytest.mark.parametrize("method", ["gauss", "adaptive"])
+@pytest.mark.parametrize("legacy_keep_largest", [False, True])
+def test_tissue_segmentation_keeps_disconnected_bone_even_with_legacy_largest_flag(method, legacy_keep_largest):
+    """SEG is not an FEA connectivity-filtered mask; retain both valid islands."""
+    image = np.zeros((25, 25, 9), dtype=np.float32)
+    image[2:8, 2:8, 2:7] = 900
+    image[16:21, 16:21, 2:7] = 900
+    image[12, 12, 4] = 900
+    full = np.ones_like(image, dtype=bool)
+    params = SegmentationParameters(method=method, gaussian_sigma=0, min_size_voxels=64,
+                                    keep_largest_component=legacy_keep_largest)
+    result = segment_bone_xyz(image, full, full, np.zeros_like(full), params)
+    assert result[4, 4, 4] and result[18, 18, 4]
+    assert not result[12, 12, 4]  # Small-noise removal is a separate, retained policy.
+    labels = sitk.RelabelComponent(sitk.ConnectedComponent(sitk.GetImageFromArray(result.astype(np.uint8))))
+    assert int(sitk.GetArrayViewFromImage(labels).max()) == 2
 
 
 def test_laplace_hamming_binarization_respects_full_mask_and_component_limit() -> None:

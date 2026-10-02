@@ -53,7 +53,7 @@ jobs:
       - name: Install optional runtime
         run: python -m pip install -e ".[test,unet]"
       - name: Check fixed defaults and publication
-        run: python -m pytest tests/test_unet_optional.py tests/test_unet_inference.py tests/test_unet_aim.py -q
+        run: python -m pytest tests/test_unet_optional.py tests/test_unet_inference.py tests/test_unet_postprocessing.py tests/test_unet_aim.py -q
 
   build:
     name: Build Check

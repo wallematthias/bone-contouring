@@ -10,8 +10,8 @@ from typing import Any
 
 from .parameters import ContourParameters
 
-_MODALITIES = {"xct1", "xct2"}
-_SITES = {"radius", "tibia", "knee"}
+_MODALITIES = {"xct1", "xct2", "custom"}
+_SITES = {"radius", "tibia", "knee", "none"}
 _SEGMENTATION_METHODS = {"laplace_hamming", "gauss", "adaptive"}
 _OUTER_CONTOUR_METHODS = {"standard", "geodesic", "buie", "ipl_match", "stable_3d"}
 _INNER_CONTOUR_METHODS = {"standard", "none", "buie", "ipl_match", "stable_3d"}
@@ -34,7 +34,11 @@ def resolve_preset(
     inner_contour: str = "standard",
     contour_support_method: str = "",
 ) -> ContourParameters:
-    """Compose a fresh parameter object from supported method dimensions."""
+    """Compose parameters; custom uses generic, uncalibrated starting values.
+
+    Custom callers must configure thresholds in their input image's units.
+    Site ``none`` is available for manually configured, non-site-specific recipes.
+    """
     modality = _choice(modality, _MODALITIES, "modality")
     site = _choice(site, _SITES, "site")
     segmentation = _choice(segmentation, _SEGMENTATION_METHODS, "segmentation")
@@ -129,6 +133,8 @@ def _params_from_shipped_profile(name: str, profile: dict[str, Any], requested_s
 def _params_from_user_profile(profile: dict[str, Any], *, override_site: str = "") -> ContourParameters:
     schema = str(profile.get("schema") or "")
     if schema == "bone-contour-recipe-v1":
+        if profile.get("contouring_method") == "unet":
+            raise ValueError("A scene U-Net recipe cannot run through standard contouring. Use the U-Net CLI or batch profile.")
         methods = dict(profile.get("methods") or {})
         site = _canonical_site(override_site or str(profile.get("site") or "radius"))
         params = resolve_preset(
