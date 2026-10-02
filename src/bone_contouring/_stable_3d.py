@@ -138,9 +138,18 @@ def outer_contour_xyz(density, parameters, stable, *, spacing_xyz):
                            sigma=parameters.gaussian_sigma, spacing_xyz=spacing)
     support = support >= parameters.periosteal_threshold
     full = _buie._timed(timings, 'bone_connectivity', _arrays.largest_component_xyz, support)
-    full = _buie._timed(timings, 'periosteal_close_xy', _arrays._apply_xy_morphology, full, int(radius), 'close')
+    # Match closing's safe XY border: dilation must not be clipped at the FOV
+    # before filling/erosion. Never pad Z, so terminal slices remain open-ended.
+    if radius:
+        full = np.pad(full, ((radius, radius), (radius, radius), (0, 0)), constant_values=False)
+    full = _buie._timed(timings, 'periosteal_dilate_xy', _arrays._apply_xy_morphology, full, int(radius), 'dilate')
+    # Seal and fill the dilated shell before shrinking it. Completing ordinary
+    # closing first can reopen the bridge and leave marrow connected to exterior.
     # Deliberately no pre-fill opening. A thin closed shell must remain closed.
     full = _buie._timed(timings, 'periosteal_fill_xy', _arrays.fill_holes_xy, full)
+    full = _buie._timed(timings, 'periosteal_erode_xy', _arrays._apply_xy_morphology, full, int(radius), 'erode')
+    if radius:
+        full = full[radius:-radius, radius:-radius, :]
     full = _buie._timed(timings, 'periosteal_distance_regularization', regularize_mask_xyz,
                         full, spacing, stable.outer_sigma_mm, stable.max_boundary_shift_mm)
     # Smoothing must not reintroduce enclosed holes in a compartment envelope.
@@ -150,6 +159,7 @@ def outer_contour_xyz(density, parameters, stable, *, spacing_xyz):
                   'support': 'independent_gaussian_density', 'parameters': asdict(stable),
                   'threshold': float(parameters.periosteal_threshold), 'density_gaussian_sigma_voxels': float(parameters.gaussian_sigma),
                   'close_xy_radius_voxels': int(radius), 'stage_seconds': timings, 'quality': quality,
+                  'morphology_sequence': ['dilate_xy', 'fill_xy', 'erode_xy'],
                   'ignored_legacy_controls': ['periosteal_open_radius', 'fill_holes', 'use_adaptive_threshold']}
 
 
@@ -166,9 +176,17 @@ def inner_contour_xyz(density, full, parameters, buie, stable, *, spacing_xyz):
     if full.shape != density.shape:
         raise ValueError('full and density must have matching 3D shapes.')
     timings = {}
+    # Exclude the peripheral low-density layer before selecting marrow. If it
+    # connects through cortical pores, dilating/filling it can engulf the entire
+    # cortex; clipping only at the end then leaves nothing but the minimum rim.
+    if peel >= min(full.shape[:2]):
+        peeled_full = np.zeros_like(full)
+    else:
+        peeled_full = _buie._timed(timings, 'periosteal_peel_xy', _arrays._apply_xy_morphology,
+                                  full, peel, 'erode')
     filtered = _buie._timed(timings, 'density_gaussian', _arrays.smooth_xyz, density,
                             sigma=parameters.gaussian_sigma, spacing_xyz=spacing)
-    marrow = (filtered < parameters.endosteal_threshold) & full
+    marrow = (filtered < parameters.endosteal_threshold) & peeled_full
     initial = int(marrow.sum())
     start = perf_counter()
     labels, count = ndi.label(marrow, ndi.generate_binary_structure(3, 3 if buie.fully_connected else 1))
@@ -189,24 +207,20 @@ def inner_contour_xyz(density, full, parameters, buie, stable, *, spacing_xyz):
                         marrow, spacing, stable.inner_sigma_mm, stable.max_boundary_shift_mm)
     trab &= full
     trab = _buie._timed(timings, 'endosteal_final_fill_xy', _arrays.fill_holes_xy, trab)
-    # Apply last: smoothing/filling must not expand trab into the minimum
-    # cortical compartment rim. XY erosion preserves the stack's Z end slices.
-    if peel >= min(full.shape[:2]):
-        peeled_full = np.zeros_like(full)
-    else:
-        peeled_full = _buie._timed(timings, 'periosteal_peel_xy', _arrays._apply_xy_morphology,
-                                  full, peel, 'erode')
+    # Reapply after smoothing/filling to preserve the minimum rim. XY erosion
+    # does not add artificial caps at the stack's Z end slices.
     trab &= peeled_full
     quality = _buie._timed(timings, 'quality', mask_quality_xyz, trab, spacing, stable)
     return trab, full & ~trab, {'experimental': True, 'native_ipl_equivalence': False,
                               'threshold': float(parameters.endosteal_threshold),
                               'density_gaussian_sigma_voxels': float(parameters.gaussian_sigma),
                               'peel_xy_radius_voxels': peel,
+                              'marrow_seed_roi': 'xy_peeled_full',
                               'parameters': asdict(stable), 'closing_dimensions_xyz': buie.endosteal_kernel_size,
                               'initial_marrow_voxels': initial, 'selected_marrow_voxels': selected,
                               'initial_marrow_component_count': int(count), 'stage_seconds': timings, 'quality': quality,
                               'ignored_legacy_controls': ['trabecular_close_radius', 'endosteal_kernel_size', 'use_adaptive_threshold'],
                               'deviations_from_buie': ['prefiltered density marrow seed', 'largest marrow component',
                                                        'axial fill before erosion', 'final axial envelope filling',
-                                                       'final axial minimum cortical compartment peel',
+                                                       'axial marrow seed peel and final minimum cortical compartment peel',
                                                        'symmetric signed-distance smoothing instead of uint8 100/255 smoothing']}

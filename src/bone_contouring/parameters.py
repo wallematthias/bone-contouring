@@ -113,4 +113,4 @@ class ContourParameters:
     stable_3d: Stable3DParameters = field(default_factory=Stable3DParameters)
 
 
-STANDARD_ALGORITHM_REVISION = "topology_first_v2"
+STANDARD_ALGORITHM_REVISION = "topology_first_v4"

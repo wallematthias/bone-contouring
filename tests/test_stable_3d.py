@@ -75,6 +75,44 @@ def test_thin_shell_is_filled_before_any_cleanup_can_open_it():
     assert np.array_equal(sitk.GetArrayFromImage(masks.full).astype(bool), want)
 
 
+@pytest.mark.parametrize('modality', ['xct1', 'xct2'])
+@pytest.mark.parametrize('site', ['radius', 'tibia', 'knee'])
+def test_standard_outer_fills_a_dilated_open_shell_before_eroding(modality, site):
+    # Ordinary closing reopens this narrow bridge before hole filling. Filling
+    # the dilated shell first must retain the marrow on every slice, including
+    # the scan ends, without leaving the dilated outer boundary in the output.
+    p = resolve_preset(modality=modality, site=site)
+    p.outer.gaussian_sigma = p.inner.gaussian_sigma = 0
+    p.outer.periosteal_kernel_size = 2
+    p.stable_3d.outer_sigma_mm = (0., 0., 0.)
+    p.segmentation.enabled = False
+    density = shell()
+    density[19:22, 8, :] = 0
+    masks = generate_masks_from_image(image(density), p)
+    full = sitk.GetArrayFromImage(masks.full).astype(bool)
+    assert full[:, 20, 20].all()
+    assert not full[:, :8, :].any() and not full[:, 33:, :].any()
+    assert not full[:, :, :8].any() and not full[:, :, 33:].any()
+    assert masks.metadata['outer_contour']['quality']['area_jump_pairs_z0'] == []
+
+
+def test_outer_fill_between_morphology_does_not_invent_crop_contact():
+    # The unpadded dilated shell reaches the image edge. Neutral-boundary
+    # erosion then retains that artificial contact instead of restoring bounds.
+    p = params()
+    p.outer.gaussian_sigma = p.inner.gaussian_sigma = 0
+    p.outer.periosteal_kernel_size = 4
+    p.stable_3d.outer_sigma_mm = (0., 0., 0.)
+    p.segmentation.enabled = False
+    density = np.roll(shell(), -6, axis=0)
+    density[13:16, 8, :] = 0
+    masks = generate_masks_from_image(image(density), p)
+    full = sitk.GetArrayFromImage(masks.full).astype(bool)
+    assert full[:, 20, 14].all()
+    assert not full[:, :, :2].any() and not full[:, :, 27:].any()
+    assert masks.metadata['outer_contour']['quality']['xy_crop_contact_slices'] == []
+
+
 def test_stable_outer_is_independent_of_tissue_segmentation_settings():
     p = params()
     first = generate_masks_from_image(image(shell()), p)

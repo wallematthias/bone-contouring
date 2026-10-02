@@ -17,7 +17,7 @@ def test_standard_defaults_and_versioned_hash(site):
     assert p.buie.endosteal_kernel_size == (31, 31, 1)
     assert p.stable_3d.inner_sigma_mm == (.03, .03, .06)
     payload = _parameters_payload(p)
-    assert payload['standard_algorithm'] == 'topology_first_v2'
+    assert payload['standard_algorithm'] == 'topology_first_v4'
     first = _settings_hash(p)
     p.stable_3d.inner_sigma_mm = (.03, .03, .12)
     assert _settings_hash(p) != first
@@ -37,7 +37,7 @@ def test_other_presets_keep_density_settings_but_version_the_repaired_algorithm(
     if modality == 'xct1' and site != 'knee':
         assert p.segmentation.laplace_hamming_threshold == 15000
     payload = _parameters_payload(p)
-    assert payload['standard_algorithm'] == 'topology_first_v2'
+    assert payload['standard_algorithm'] == 'topology_first_v4'
     first = _settings_hash(p)
     p.stable_3d.inner_sigma_mm = (.03, .03, .04)
     assert _settings_hash(p) != first
@@ -64,8 +64,8 @@ def test_standard_preserves_a_thin_shell_and_is_independent_of_tissue_thresholds
     assert np.array_equal(sitk.GetArrayFromImage(out.full).astype(bool), expected)
     assert np.array_equal(sitk.GetArrayFromImage(out.cort).astype(bool), density > 0)
     assert not sitk.GetArrayFromImage(out.seg).any()
-    assert out.metadata['outer_contour']['algorithm_revision'] == 'topology_first_v2'
-    assert out.metadata['inner_contour']['algorithm_revision'] == 'topology_first_v2'
+    assert out.metadata['outer_contour']['algorithm_revision'] == 'topology_first_v4'
+    assert out.metadata['inner_contour']['algorithm_revision'] == 'topology_first_v4'
     p.outer.contour_method = p.inner.contour_method = 'stable_3d'
     explicit = generate_masks_from_image(image, p)
     for role in ('full', 'trab', 'cort'):
@@ -148,3 +148,30 @@ def test_standard_smoothing_handles_short_stacks(depth):
     assert sitk.GetArrayFromImage(out.full).all()
     assert not sitk.GetArrayFromImage(out.trab).any()
     assert np.array_equal(sitk.GetArrayFromImage(out.cort), sitk.GetArrayFromImage(out.full))
+
+
+@pytest.mark.parametrize('modality', ['xct1', 'xct2'])
+@pytest.mark.parametrize('site', ['radius', 'tibia', 'knee'])
+def test_peripheral_low_density_path_does_not_turn_cortex_into_only_the_peel(modality, site):
+    # Without a seed peel, the peripheral low-density layer connects to marrow
+    # through a pore. Dilating/filling that layer swallows the dense cortex.
+    # Removing only the final peel leaves this regression undetected by QA.
+    from bone_contouring import _stable_3d
+    density = np.zeros((65, 65, 7), np.float32)
+    full = np.zeros_like(density, bool)
+    full[8:57, 8:57, :] = True
+    density[10:55, 10:55, :] = 900
+    density[20:45, 20:45, :] = 0
+    density[43:57, 31:34, :] = 0  # One path from marrow to peripheral layer.
+    p = resolve_preset(modality=modality, site=site)
+    p.inner.gaussian_sigma = 0
+    p.stable_3d.inner_sigma_mm = (0, 0, 0)
+    trab, cort, _ = _stable_3d.inner_contour_xyz(
+        density, full, p.inner, p.buie, p.stable_3d, spacing_xyz=(.082, .082, .082))
+    # Hand-selected dense cortex well beyond the 3-voxel minimum rim, opposite
+    # the pore, must survive on all slices, including both scan ends.
+    assert cort[15, 32, :].all()
+    assert not trab[15, 32, :].any()
+    assert trab[32, 32, :].all()
+    assert not trab[10, 32, :].any()
+    assert np.array_equal(trab | cort, full) and not (trab & cort).any()

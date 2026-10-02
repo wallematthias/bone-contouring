@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Correct the shared standard outer contour to dilate in XY, fill the dilated shell, then erode with the same radius. Preserve existing thresholds, radii, smoothing, geometry, and final minimum cortical peel across XCTI/XCTII radius, tibia, and knee.
+- Temporarily pad XY during dilation/filling/erosion to prevent artificial crop-edge contact; crop back before smoothing and never pad the stack ends.
+- Restrict the standard marrow seed to the XY-peeled full ROI before connectivity and dilation/filling, preventing a connected peripheral low-density layer from swallowing cortex and leaving only the minimum peel. Retain the final minimum-rim constraint and all thresholds, footprints, and smoothing settings.
+- Advance algorithm provenance/settings hashes to `topology_first_v4`, record the morphology sequence and marrow-seed ROI. Existing saved masks are not automatically regenerated.
+- Add open-shell regressions for every standard scanner/site preset, including scan ends and restoration of the undilated outer bounds.
+- Add peripheral marrow-leak regressions across every standard scanner/site preset that require dense cortex beyond the minimum peel to survive.
+
 ## 0.3.3 — 2026-10-02
 
 - Keep AIM-dependent U-Net batch tests optional in base-package environments and include them explicitly in the dedicated U-Net CI job. Scientific runtime behaviour is unchanged from 0.3.2.

@@ -263,7 +263,9 @@ masks = generate_masks_from_image(density_image, params)
 
 The outer stage independently filters and thresholds calibrated density using
 the effective preset settings, selects the largest 6-connected bone component,
-closes in XY, and fills axial holes. XCTII radius/tibia defaults remain sigma
+dilates in XY, fills axial holes **before erosion**, then erodes with the same
+radius. Completing ordinary closing before filling can reopen a narrow bridge
+and leave marrow connected to the exterior. XCTII radius/tibia defaults remain sigma
 `0.8` voxel-relative and threshold `320` mg HA/cm³; other presets retain their
 existing density thresholds, Gaussian sigmas, and outer closing radii. It deliberately
 omits the legacy pre-fill opening: that operation can break a thin shell and
@@ -271,12 +273,15 @@ prevent marrow filling. The ignored outer controls are `periosteal_open_radius`,
 `fill_holes`, and `use_adaptive_threshold`.
 
 The inner stage independently filters density, thresholds below its configured
-endosteal threshold inside full, keeps the largest 3D marrow component, dilates
+endosteal threshold inside an XY-eroded full ROI (`inner.peel=3` by default),
+keeps the largest 3D marrow component, dilates
 with the configured ellipsoidal **dimension** footprint, fills axial holes, then erodes
 with the same footprint and clips to full. `params.buie.endosteal_kernel_size`
-and `fully_connected` control these operations. After distance smoothing and final
-hole filling, trab is constrained to an XY-eroded full ROI (`inner.peel=3` by
-default), preserving a minimum cortical **compartment** rim without peeling Z
+and `fully_connected` control these operations. Peeling the seed ROI before
+connectivity excludes the peripheral low-density layer; if connected to marrow
+through pores, that layer can otherwise engulf dense cortex during dilation and
+filling. After distance smoothing and final hole filling, trab is constrained
+again to the same peeled ROI, preserving a minimum cortical **compartment** rim without peeling Z
 end slices. This is not a measured cortical bone thickness or a requirement of
 the original Buie method. Set `inner.peel=0` explicitly to disable the constraint.
 `trabecular_close_radius`, `endosteal_kernel_size`, and `use_adaptive_threshold`
@@ -314,7 +319,7 @@ contours, especially when trabecular ROI reaches the outer boundary.
 
 Use calibrated density and the image API to force regeneration. Existing batch
 mask reuse is unchanged; existing masks are not automatically regenerated.
-Settings hashes and provenance include `standard_algorithm=topology_first_v2`
+Settings hashes and provenance include `standard_algorithm=topology_first_v4`
 and the effective kernel/regularization settings for the replacement standard.
 Tissue-segmentation methods/settings are unchanged; their contour-support
 override no longer drives this standard's envelopes. Select `--method standard` in the read-only benchmark

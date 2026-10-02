@@ -214,6 +214,8 @@ def _apply_xy_morphology(mask_xyz: np.ndarray, radius: int, operation: str) -> n
             processed = sitk.BinaryMorphologicalOpening(slice_image, [radius, radius])
         elif operation == "erode":
             processed = sitk.BinaryErode(slice_image, [radius, radius])
+        elif operation == "dilate":
+            processed = sitk.BinaryDilate(slice_image, [radius, radius])
         else:  # pragma: no cover - private caller supplies fixed operations
             raise ValueError(f"Unsupported morphology operation: {operation}.")
         output[:, :, z_index] = sitk.GetArrayFromImage(processed).T > 0
