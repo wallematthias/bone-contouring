@@ -11,6 +11,10 @@ from .algebra import run_mask_label_algebra_batch
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="bone-contouring")
     commands = parser.add_subparsers(dest="command")
+    unet = commands.add_parser("unet", help="published radius/tibia U-Net compartment contours")
+    unet.add_argument("inputs", nargs="+", help="AIM images or input folders")
+    unet.add_argument("--output", required=True, help="Results folder outside input/raw folders")
+    unet.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"), default="auto")
     batch = commands.add_parser("run-batch", help="write BoneContours derivatives for a normalized dataset")
     batch.add_argument("dataset_root")
     batch.add_argument("--modality", default="xct1")
@@ -34,6 +38,10 @@ def main(argv: list[str] | None = None) -> int:
     algebra.add_argument("--force", action="store_true")
     algebra.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.command == "unet":
+        from .unet.cli import main as unet_main
+        return unet_main([*args.inputs, "--output", args.output, "--device", args.device])
 
     if args.command == "run-batch":
         records = run_bone_contouring_batch(

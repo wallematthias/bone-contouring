@@ -6,7 +6,53 @@
 
 SimpleITK-first bone contouring and mask generation for volumetric bone images.
 
-Author: Matthias Walle.
+Standard contouring: Matthias Walle. Optional U-Net method and trained model:
+Nathan J. Neeteson, Bryce A. Besler, Danielle E. Whittier and Steven K. Boyd.
+
+## Published HR-pQCT U-Net (optional)
+
+Install `pip install 'bone-contouring[unet]'` to use the fixed-default published
+61 µm radius/tibia model. The base package does not require PyTorch, scikit-image
+or aimio-py. No Bonelab or vtkbone is required.
+
+```bash
+bone-contouring unet /data/raw --output /data/results --device auto
+ssh host 'bone-contouring unet /data/raw --output /data/results --device cuda'
+```
+
+```python
+from bone_contouring.unet import Segmenter
+masks = Segmenter(device="auto").segment(density_zyx)  # calibrated mg HA/cm³
+```
+
+Devices: auto (CUDA → MPS → CPU), cpu, cuda, mps. Explicit unavailable devices
+fail clearly. The only inference control is device; published preprocessing,
+five-slice channels, model and morphology are unchanged. XCT-I and knee accuracy,
+and equivalence to scanner/IPL contours, are not established.
+
+First use downloads SHA256-verified `radius_tibia_final.pth` to the shared cache.
+Use `HRPQCT_SEGMENTATION_MODEL_DIR` to share a pre-provisioned cache, or
+`HRPQCT_SEGMENTATION_WEIGHTS` for a verified explicit weights file. Slicer stores
+weights in its application data `HRpQCTSegmentation/models`, beside MotionScore.
+Setup installs dependencies, not model weights.
+
+The CLI writes native 0/127 full/trab/cort AIM **compartment** masks with original
+geometry and standard BoneContours names, individual provenance sidecars and a
+`_UNET.json` completion marker. It never overwrites existing artifacts and reuses
+one model per batch. Complete files are published atomically; interrupted cases
+without a valid completion marker are withheld by derivative discovery.
+These are not bone-tissue SEG masks. Standard batch contouring can add missing
+SEG/material labels while preserving these compartments. Slicer imports all three
+roles into one segmentation node and additionally publishes the dataset manifest.
+
+Code is GPL-3.0-only from version 0.3.0; previously distributed MIT versions retain
+their original terms. See LICENSE and NOTICE for notices and upstream credit.
+The original inference draft also retains GPL-3.0-only; it need not be published
+as another PyPI package.
+
+Method: [Neeteson et al., Scientific Reports 13, 252 (2023)](https://doi.org/10.1038/s41598-022-27350-0).
+Original code: [Bonelab/HR-pQCT-Segmentation](https://github.com/Bonelab/HR-pQCT-Segmentation).
+Published weights: [Zenodo](https://zenodo.org/records/14755838).
 
 ```python
 from bone_contouring import generate_masks_from_image, resolve_preset

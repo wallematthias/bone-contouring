@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 — Unreleased
+
+- Add fixed-default published HR-pQCT U-Net inference as optional `bone-contouring[unet]`, with CPU/CUDA/MPS, verified weights, native AIM batch CLI and a scene worker. Preserve Neeteson et al.'s model/morphology and attribution; no Bonelab/vtkbone dependency.
+- Publish complete AIM files exclusively and atomically, sidecars first and completion marker last. Depend on bone-imaging-derivatives 0.1.6 for completion-gated discovery.
+- Change distribution license to GPL-3.0-only to include the GPL scientific backend; preserve the former MIT notice and prior grants. Standard contouring behavior is unchanged.
+
 ## 0.2.1 — 2026-10-01
 
 - Restore the default 3-voxel axial minimum cortical compartment peel in standard/stable-3D contouring, applied after smoothing and hole filling. Preserve Z end slices and explicit `inner.peel=0` overrides.

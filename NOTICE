@@ -1,0 +1,21 @@
+bone-contouring 0.3.0 and later is distributed under GPL-3.0-only.
+Copyright (c) 2026 Matthias Walle, for original bone-contouring code.
+Prior MIT grants remain valid for previously distributed versions; the original
+MIT notice is preserved in LICENSES/MIT-previous.txt.
+
+The optional U-Net architecture, preprocessing and morphology are adapted from
+Bonelab/HR-pQCT-Segmentation (GPL-3.0), written by Nathan J. Neeteson.
+Scientific method and published weights: Nathan J. Neeteson, Bryce A. Besler,
+Danielle E. Whittier and Steven K. Boyd, Bone Imaging Laboratory,
+University of Calgary.
+
+Neeteson NJ, Besler BA, Whittier DE, Boyd SK (2023). Automatic segmentation of
+trabecular and cortical compartments in HR-pQCT images using an embedding-
+predicting U-Net and morphological post-processing. Scientific Reports 13, 252.
+https://doi.org/10.1038/s41598-022-27350-0
+Code: https://github.com/Bonelab/HR-pQCT-Segmentation
+Weights: https://zenodo.org/records/14755838
+
+Runtime adaptation: aimio-py I/O, fixed-default inference, device selection,
+verified weight cache, NumPy ABI compatibility and transactional publication.
+No model retraining or additional contour smoothing/peel is introduced.

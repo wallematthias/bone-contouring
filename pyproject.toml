@@ -1,18 +1,18 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "bone-contouring"
-version = "0.2.1"
+version = "0.3.0"
 description = "SimpleITK-first bone contour and mask generation for volumetric bone images"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Matthias Walle" }]
-license = "MIT"
-license-files = ["LICENSE"]
+license = "GPL-3.0-only"
+license-files = ["LICENSE", "NOTICE", "LICENSES/*.txt"]
 dependencies = [
-  "bone-imaging-derivatives>=0.1.4",
+  "bone-imaging-derivatives>=0.1.6",
   "numpy>=1.26,<3.0",
   "SimpleITK>=2.3",
   "scipy>=1.11,<2.0",
@@ -22,6 +22,7 @@ dependencies = [
 bone-contouring = "bone_contouring.cli:main"
 
 [project.optional-dependencies]
+unet = ["torch>=2.2", "scikit-image>=0.24,<0.26", "aimio-py>=0.1.8"]
 geodesic = ["hrpqct-geodesic-contour>=0.1.2"]
 test = ["pytest>=8", "pytest-cov>=7"]
 
@@ -36,3 +37,7 @@ bone_contouring = ["profiles/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# The optional scientific runtime has a separate U-Net CI job.
+[tool.coverage.run]
+omit = ["*/bone_contouring/unet/*"]
