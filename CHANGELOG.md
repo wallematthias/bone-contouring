@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.4 — 2026-10-02
 
 - Correct the shared standard outer contour to dilate in XY, fill the dilated shell, then erode with the same radius. Preserve existing thresholds, radii, smoothing, geometry, and final minimum cortical peel across XCTI/XCTII radius, tibia, and knee.
 - Temporarily pad XY during dilation/filling/erosion to prevent artificial crop-edge contact; crop back before smoothing and never pad the stack ends.
