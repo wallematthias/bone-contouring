@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 — 2026-10-02
+
+- Add a normalized U-Net batch recipe that writes published radius/tibia compartments plus XCTII Laplace–Hamming tissue SEG and FEA material labels in one run, using native AIM intensities and standard BoneContours naming/manifests.
+- Resume completed U-Net contours without loading the network; preserve existing masks, reject incomplete/conflicting outputs, and scope processing to the selected physical stack.
+- Require matching XCTII LH provenance/defaults before reusing an existing tissue SEG in the combined profile; preserve incompatible imported/Gaussian SEG files and report a conflict.
+- Require bone-imaging-derivatives 0.1.7 for current naming/undo behavior. Standalone raw AIM inference and scene scientific defaults are unchanged.
+
 ## 0.3.1 — 2026-10-02
 
 - Support manually configured `custom` recipes and site `none` in scene-exported/batch profiles, preserving user thresholds in input image units without XCTII site calibration. No built-in micro-CT preset is provided.

@@ -88,6 +88,7 @@ def run_bone_contouring_batch(
     subject_id: str = "",
     session_id: str = "",
     voi: str = "",
+    image_path=None,
     output_root=None,
     force: bool = False,
     dry_run: bool = False,
@@ -102,6 +103,9 @@ def run_bone_contouring_batch(
         session_id=session_id,
         voi=voi,
     )
+    if image_path is not None:
+        source = Path(image_path).expanduser().resolve()
+        cases = tuple(row for row in cases if row.image.path.resolve() == source)
     if not cases:
         raise ValueError("No normalized XCT image row was found for bone contouring")
     if dry_run:

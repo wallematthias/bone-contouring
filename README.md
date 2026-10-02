@@ -52,9 +52,23 @@ geometry and standard BoneContours names, individual provenance sidecars and a
 `_UNET.json` completion marker. It never overwrites existing artifacts and reuses
 one model per batch. Complete files are published atomically; interrupted cases
 without a valid completion marker are withheld by derivative discovery.
-These are not bone-tissue SEG masks. Standard batch contouring can add missing
-SEG/material labels while preserving these compartments. Slicer imports all three
-roles into one segmentation node and additionally publishes the dataset manifest.
+These are not bone-tissue SEG masks. The normalized Slicer batch profile adds
+XCTII Laplace–Hamming tissue SEG and material labels in the same run, then loads
+full/trab/cort/SEG into one segmentation node. Completed U-Net compartments are
+reused without inference when only SEG/material is missing; imported/conflicting
+or incomplete compartments are preserved and blocked rather than overwritten.
+An existing tissue SEG is reused only with matching XCTII LH provenance/defaults;
+an incompatible or unverified SEG is preserved and reported as a conflict.
+The same one-case normalized recipe is available without Slicer:
+
+```bash
+bone-contouring unet /data/study/sub-001/ses-1/xct/sub-001_ses-1_voi-radiusleft_xct.AIM --output /data/study/derivatives/BoneContours/sub-001/ses-1/xct --dataset-root /data/study --device auto
+```
+
+LH uses the original AIM native intensities, not density-calibrated U-Net inputs.
+Site comes from the normalized radius/tibia VOI. Standalone raw-folder inference
+without `--dataset-root` remains compartment-only; existing standard batch
+profiles can also add missing SEG/material while preserving compartments.
 
 Code is GPL-3.0-only from version 0.3.0; previously distributed MIT versions retain
 their original terms. See LICENSE and NOTICE for notices and upstream credit.

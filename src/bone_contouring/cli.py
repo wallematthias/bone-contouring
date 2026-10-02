@@ -15,6 +15,7 @@ def main(argv: list[str] | None = None) -> int:
     unet.add_argument("inputs", nargs="+", help="AIM images or input folders")
     unet.add_argument("--output", required=True, help="Results folder outside input/raw folders")
     unet.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"), default="auto")
+    unet.add_argument("--dataset-root", default="", help="Normalized dataset: add XCTII LH SEG")
     batch = commands.add_parser("run-batch", help="write BoneContours derivatives for a normalized dataset")
     batch.add_argument("dataset_root")
     batch.add_argument("--modality", default="xct1")
@@ -41,7 +42,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "unet":
         from .unet.cli import main as unet_main
-        return unet_main([*args.inputs, "--output", args.output, "--device", args.device])
+        extra = ["--dataset-root", args.dataset_root] if args.dataset_root else []
+        return unet_main([*args.inputs, "--output", args.output, "--device", args.device, *extra])
 
     if args.command == "run-batch":
         records = run_bone_contouring_batch(

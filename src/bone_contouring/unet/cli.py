@@ -8,10 +8,17 @@ def main(argv=None):
     parser.add_argument("inputs", nargs="+", help="AIM images or input folders (recursive; masks excluded)")
     parser.add_argument("--output", required=True, help="Results folder outside input/raw folders")
     parser.add_argument("--device", choices=("auto","cpu","cuda","mps"), default="auto")
+    parser.add_argument("--dataset-root", help="Normalized dataset: add XCTII LH SEG and standard BoneContours manifest")
     args = parser.parse_args(argv)
     try:
-        from .aim import run_batch
-        run_batch(args.inputs, args.output, args.device)
+        if args.dataset_root:
+            if len(args.inputs) != 1:
+                raise ValueError("Normalized batch mode requires one AIM case per command.")
+            from .batch import run_normalized_case
+            run_normalized_case(args.inputs[0], args.output, args.dataset_root, args.device)
+        else:
+            from .aim import run_batch
+            run_batch(args.inputs, args.output, args.device)
     except ImportError as exc:
         print(f"ERROR: U-Net dependencies are unavailable ({exc}). Install 'bone-contouring[unet]'.",
               file=sys.stderr, flush=True)
