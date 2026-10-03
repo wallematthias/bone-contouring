@@ -85,6 +85,13 @@ from bone_contouring import generate_masks_from_image, resolve_preset
 masks = generate_masks_from_image(image, resolve_preset(modality="xct1", site="radius"))
 ```
 
+Standard XCTI periosteal thresholds are **250 mg HA/cm³ for radius/tibia** and
+**150 mg HA/cm³ for knee**, in both resolved and shipped batch presets. These
+apply to calibrated density inputs, not the native-gray Laplace–Hamming tissue
+threshold. XCTII, endosteal thresholds, morphology, and smoothing are unchanged.
+Saved custom profiles retain their explicit thresholds; existing masks are not
+automatically regenerated when defaults change.
+
 For manually configured images, use `resolve_preset(modality="custom", site="none",
 segmentation="gauss")` and set thresholds in the input image's units. Custom
 recipes do not apply XCTII radius/tibia threshold calibration. Users can save

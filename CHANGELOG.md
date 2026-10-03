@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5 — 2026-10-02
+
+- Lower standard XCTI periosteal defaults from 300 to 250 for radius/tibia and to 150 for knee, aligning resolved/encoded and shipped batch profiles with the scene defaults. Preserve explicit saved/custom thresholds, XCTII settings, endosteal/tissue thresholds, morphology and smoothing. Existing masks require explicit regeneration.
+- Add lower-density-shell regressions exercising every XCTI site through resolved, encoded and named batch presets.
+
 ## 0.3.4 — 2026-10-02
 
 - Correct the shared standard outer contour to dilate in XY, fill the dilated shell, then erode with the same radius. Preserve existing thresholds, radii, smoothing, geometry, and final minimum cortical peel across XCTI/XCTII radius, tibia, and knee.

@@ -60,6 +60,8 @@ def resolve_preset(
     if modality == "xct1":
         params.outer.periosteal_kernel_size = 12
         params.outer.periosteal_open_radius = 1
+        if outer_contour == "standard":
+            params.outer.periosteal_threshold = 150.0 if site == "knee" else 250.0
         if site in {"radius", "tibia"} and segmentation == "laplace_hamming":
             params.segmentation.laplace_hamming_threshold = 15000.0
     else:

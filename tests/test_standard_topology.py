@@ -26,11 +26,11 @@ def test_standard_defaults_and_versioned_hash(site):
     assert _settings_hash(p) != first
 
 
-@pytest.mark.parametrize('modality,site', [('xct1', 'radius'), ('xct1', 'tibia'),
-                                         ('xct1', 'knee'), ('xct2', 'knee')])
-def test_other_presets_keep_density_settings_but_version_the_repaired_algorithm(modality, site):
+@pytest.mark.parametrize('modality,site,outer_threshold', [('xct1', 'radius', 250), ('xct1', 'tibia', 250),
+                                                        ('xct1', 'knee', 150), ('xct2', 'knee', 300)])
+def test_other_presets_keep_inner_settings_but_version_the_repaired_algorithm(modality, site, outer_threshold):
     p = resolve_preset(modality=modality, site=site)
-    assert p.outer.periosteal_threshold == 300
+    assert p.outer.periosteal_threshold == outer_threshold
     assert p.inner.endosteal_threshold == 500
     assert p.outer.gaussian_sigma == p.inner.gaussian_sigma == 1.5
     assert p.buie.endosteal_kernel_size == (10, 10, 1)

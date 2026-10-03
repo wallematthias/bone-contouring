@@ -8,7 +8,7 @@
     "sites": {
       "radius": {
         "outer": {
-          "periosteal_threshold": 300.0,
+          "periosteal_threshold": 250.0,
           "periosteal_kernel_size": 12,
           "periosteal_open_radius": 1
         },
@@ -18,7 +18,7 @@
       },
       "tibia": {
         "outer": {
-          "periosteal_threshold": 300.0,
+          "periosteal_threshold": 250.0,
           "periosteal_kernel_size": 12,
           "periosteal_open_radius": 1
         },
@@ -28,7 +28,7 @@
       },
       "knee": {
         "outer": {
-          "periosteal_threshold": 300.0,
+          "periosteal_threshold": 150.0,
           "periosteal_kernel_size": 12,
           "periosteal_open_radius": 1
         }

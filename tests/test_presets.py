@@ -3,7 +3,9 @@ from __future__ import annotations
 from importlib.metadata import version
 
 import bone_contouring
+import numpy as np
 import pytest
+import SimpleITK as sitk
 from bone_contouring import (
     ContourParameters,
     InnerContourParameters,
@@ -105,11 +107,35 @@ def test_xct1_preset_uses_standard_periosteal_contour_defaults() -> None:
         inner_contour="standard",
     )
 
-    assert params.outer.periosteal_threshold == 300.0
+    assert params.outer.periosteal_threshold == 250.0
     assert params.outer.periosteal_kernel_size == 12
     assert params.outer.periosteal_open_radius == 1
     assert params.outer.use_adaptive_threshold is False
     assert params.segmentation.laplace_hamming_threshold == 15000.0
+
+
+@pytest.mark.parametrize("site,density", [("radius", 275.0), ("tibia", 275.0), ("knee", 175.0)])
+@pytest.mark.parametrize("profile", ["resolved", "XtremeCTI", "encoded"])
+def test_xct1_standard_presets_retain_low_density_outer_shell(site, density, profile):
+    """Scene/API and both batch preset routes must not discard lower-density cortex."""
+    if profile == "resolved":
+        params = resolve_preset(modality="xct1", site=site)
+    elif profile == "encoded":
+        params = load_preset(f"xct1-{site}-laplace_hamming-standard-standard")
+    else:
+        params = load_preset(profile, site=site)
+    image_array = np.zeros((7, 41, 41), dtype=np.float32)
+    image_array[:, 8:33, 8:33] = density
+    image_array[:, 9:32, 9:32] = 0
+    params.outer.gaussian_sigma = 0
+    params.outer.periosteal_kernel_size = 0
+    params.stable_3d.outer_sigma_mm = (0, 0, 0)
+    params.inner.contour_method = "none"
+    params.segmentation.enabled = False
+    masks = bone_contouring.generate_masks_from_image(sitk.GetImageFromArray(image_array), params)
+    expected = np.zeros_like(image_array, dtype=bool)
+    expected[:, 8:33, 8:33] = True
+    assert np.array_equal(sitk.GetArrayFromImage(masks.full).astype(bool), expected)
 
 
 def test_resolved_presets_are_independent_instances() -> None:
