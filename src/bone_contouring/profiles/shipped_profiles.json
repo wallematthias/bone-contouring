@@ -29,8 +29,8 @@
       "knee": {
         "outer": {
           "periosteal_threshold": 150.0,
-          "periosteal_kernel_size": 12,
-          "periosteal_open_radius": 1
+          "periosteal_kernel_size": 16,
+          "periosteal_open_radius": 8
         }
       }
     }

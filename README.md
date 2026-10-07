@@ -123,7 +123,8 @@ segmentation-aligned contour support are ignored by the selected Buie stage.
 Do not supply a native-gray image while interpreting thresholds as mg HA/cm³.
 
 Gaussian **tissue segmentation** defaults to a single filter of the original
-density image with sigma **1.2 voxels**, followed by thresholds of **320 mg HA/cm³
+density image with sigma **0.8 voxels** and **support 1 voxel** (a finite
+3×3×3 sampled Gaussian, reflected at image boundaries), followed by thresholds of **320 mg HA/cm³
 in trabecular** and **450 mg HA/cm³ in cortical** compartments. Sigma is scaled
 by the smallest voxel spacing; it is not specified in millimetres. Contour
 prefilters and signed-distance smoothing are separate and do not pre-smooth
@@ -190,6 +191,44 @@ Each case runs in a fresh process. Peak RSS includes input reading and the
 image API, not just filter allocations; API timing excludes reference comparison
 and input reading, and disables final bone-tissue segmentation.
 
+## Experimental IPL script candidate
+
+Select `inner_contour="ipl"` for the **IPL** candidate translating STEP_1 of the
+supplied `IPL_UPAT_CALGARY_EVAL_XT2_NOREG.COM` (Steven K. Boyd, Danielle E.
+Whittier). This fixed candidate is opt-in, for XCTII radius/tibia only. The shared
+standard uses a tunable adaptation described below. The script consumes a supplied outer GOBJ, so this candidate uses the
+full ROI from the separately selected outer-contour method.
+
+```python
+params = resolve_preset(modality="xct2", site="tibia", segmentation="gauss",
+                        outer_contour="standard", inner_contour="ipl")
+masks = generate_masks_from_image(density_image, params)
+```
+
+The fixed recipe uses a sigma-2/support-3 cortical seed at 500–3000 mg HA/cm³,
+inversion/rank extraction, a six-voxel XY peel, 3D erosion–component–dilation at
+distance 3, close/open at 15, the literal corner-number filters, then close at
+30 (radius) or 50 (tibia), axial 50–100% component cleanup and complementary
+CORT/TRAB masks. The final corner filter keeps 1–800 voxels even after the
+site-specific minimum of 800/200000; that apparent script inconsistency is
+preserved. No standard signed-distance smoothing or hole-fill fallback is added.
+The final `TRAB = all - cleaned CORT` can reassign discarded peripheral cortical
+fragments to TRAB outside the previous peel; metadata reports those voxels.
+
+**This is not validated native IPL equivalence.** The implementation currently
+uses voxel-centre Euclidean balls, background outside XY, and edge-replicated
+terminal slices in Z during morphology, cropped back afterward. This avoids
+artificial endosteal scan-end caps; Z is not cropped at intermediate ROI bounds.
+The large 3D opening/closing distances are unchanged; no extra smoothing is added.
+Native stack-end handling, Scanco metric 11, GOBJ peel rasterization, Gaussian
+support/margins, bounding-box margins and component ties remain unverified.
+Metadata records these assumptions
+and intermediate counts/timings. Tissue SEG retains the separately configured
+package method; IPL STEP_2 compartment-boundary filtering is not emulated here.
+The STEP_1 recipe is commented out in the supplied script. Validate against
+native outputs generated with that step enabled and the same outer ROI before
+using this experimental candidate as a scanner replacement.
+
 ## Experimental IPL-matching hybrid
 
 `ipl_match` is a separate image-only candidate whose goal is agreement with
@@ -250,15 +289,15 @@ This writes `ipl_match_benchmark.json` and `ipl_match_benchmark.csv`, without
 overwriting the Buie results or any input images/masks. Threshold overrides
 are optional; by default the chosen method's preset values are used.
 
-## Standard contouring: topology-first across XCTI, XCTII, and knee
+## Standard contouring: shared repaired IPL-style sequence
 
-`standard` now uses one topology-first contouring path across XCTI and XCTII,
+`standard` uses one repaired IPL-style compartment sequence across XCTI and XCTII,
 for radius, tibia, and knee, including shipped profiles and the Slicer adapter.
 There is no legacy standard selector. Input must represent one target bone:
 largest-component selection is not multi-bone knee segmentation. Native-mask
-comparisons currently cover XCTII radius/tibia, not XCTI or knee. The explicit `stable_3d`
-stage names still address the same implementation for method-development use.
-This is a departure from literal Buie, **not** a recovered or equivalent IPL recipe.
+comparisons currently cover XCTII radius/tibia, not XCTI or knee. The explicit
+`stable_3d` inner stage retains the earlier method for development; it is no longer
+an alias for standard. This is **not validated native IPL equivalence**.
 
 ```python
 params = resolve_preset(
@@ -279,43 +318,38 @@ omits the legacy pre-fill opening: that operation can break a thin shell and
 prevent marrow filling. The ignored outer controls are `periosteal_open_radius`,
 `fill_holes`, and `use_adaptive_threshold`.
 
-The inner stage independently filters density, thresholds below its configured
-endosteal threshold inside an XY-eroded full ROI (`inner.peel=3` by default),
-keeps the largest 3D marrow component, dilates
-with the configured ellipsoidal **dimension** footprint, fills axial holes, then erodes
-with the same footprint and clips to full. `params.buie.endosteal_kernel_size`
-and `fully_connected` control these operations. Peeling the seed ROI before
-connectivity excludes the peripheral low-density layer; if connected to marrow
-through pores, that layer can otherwise engulf dense cortex during dilation and
-filling. After distance smoothing and final hole filling, trab is constrained
-again to the same peeled ROI, preserving a minimum cortical **compartment** rim without peeling Z
-end slices. This is not a measured cortical bone thickness or a requirement of
-the original Buie method. Set `inner.peel=0` explicitly to disable the constraint.
-`trabecular_close_radius`, `endosteal_kernel_size`, and `use_adaptive_threshold`
-do not control this method. Other Buie smoothing and
-median/periosteal fields are not used. The threshold and closing candidate were
-selected using radius C1 development comparisons: XCTII radius/tibia use sigma
-`0.8`, threshold `380`, and footprint `(31, 31, 1)`. XCTI and knee preserve their
-existing density settings and use the existing Buie block default `(10, 10, 1)`
-unless explicitly overridden. This footprint replaces the old trabecular closing
-radius; it does not reproduce that legacy morphology or establish optimal settings
-for XCTI/knee. These voxel-sized settings are not resolution-independent.
+The inner stage uses the supplied STEP_1 order: a finite Gaussian cortical seed,
+inversion/rank selection inside the six-voxel XY-peeled outer ROI, 3D erosion and
+dilation by 3, closing/opening by 15, the documented corner filters, a final
+site-specific close, and axial 50–100% component cleanup. Morphology uses
+voxel-centre Euclidean balls with XY background and edge-replicated scan ends
+in Z; intermediate cropping never introduces a false Z boundary.
 
-Both resulting envelopes are regularized with a symmetric physical signed
-distance field and a 3D Gaussian. `params.stable_3d.outer_sigma_mm` and
-`inner_sigma_mm` default to `(0.03, 0.03, 0.06)` in input **XYZ** axes, in mm.
-The through-slice sigma is half the earlier experimental candidate's value.
-XYZ refers to scan axes, not world axes; the third axis must be the stack axis.
-No artificial exterior caps are introduced at the scan ends. Changes are limited
-to voxels within `max_boundary_shift_mm=0.12` of the original field boundary.
-This is a local change-band restriction, **not** a Hausdorff displacement,
-topology, or volume guarantee; it also does not bound the earlier repair stages.
-Zero smoothing sigma or a zero change-band limit disables regularization.
-Closing and filling remain axial; this is not full-3D morphological closing.
-Final axial filling removes enclosed holes reintroduced by regularization,
-followed by clipping trabecular ROI to the XY-peeled full ROI. The final filling is an envelope
-repair, not a boundary-displacement guarantee.
-Cortex is exactly full minus trabecular ROI, including any disconnected remnants.
+| Default | Radius | Tibia | Knee adaptation |
+| --- | --- | --- | --- |
+| Cortical seed threshold (mg HA/cm³) | 500–3000 | 500–3000 | 150–3000 |
+| Seed Gaussian sigma/support (voxels) | 2 / 3 | 2 / 3 | 2 / 3 |
+| Minimum XY cortical rim (voxels) | 6 | 6 | 6 |
+| Final 3D closing radius (voxels) | 30 | 50 | 36 |
+| Initial corner-component minimum (voxels) | 800 | 200000 | 200000 |
+
+These voxel settings are shared by XCTI and XCTII; they are not physically
+resolution-independent. Knee retains its 36-voxel final close and uses the
+tibia corner rule, an unvalidated adaptation for one target bone. Standard
+knee outer threshold is 150 in both scanner presets.
+`inner.endosteal_threshold`, `gaussian_sigma`, `peel` and
+`trabecular_close_radius` remain effective custom controls. Legacy inner
+kernel/adaptive/Buie and signed-distance smoothing settings do not drive the
+new inner sequence. There is no additional signed-distance smoothing of TRAB.
+The outer contour retains its existing physical boundary regularization.
+
+After the script-style cleanup, standard reapplies the configured XY peel;
+CORT is exactly FULL minus TRAB. This intentionally differs from the fixed
+candidate's literal final complement, which may reassign small peripheral
+fragments outside the rim. Set `inner.peel=0` to disable the constraint.
+The rim is a compartment minimum, not measured cortical thickness or an
+original Buie requirement. Native metric 11, coefficients, margins, and border
+handling remain unverified. XCTI and knee transfer require further validation.
 
 Metadata includes effective settings, timings, seed sizes, and advisory QA for
 empty/fragmented slices, axial holes, crop contact, area jumps, and adjacent
@@ -326,8 +360,8 @@ contours, especially when trabecular ROI reaches the outer boundary.
 
 Use calibrated density and the image API to force regeneration. Existing batch
 mask reuse is unchanged; existing masks are not automatically regenerated.
-Settings hashes and provenance include `standard_algorithm=topology_first_v4`
-and the effective kernel/regularization settings for the replacement standard.
+Settings hashes and provenance include `standard_algorithm=shared_ipl_standard_v1`,
+the inner sequence revision and effective settings for the replacement standard.
 Tissue-segmentation methods/settings are unchanged; their contour-support
 override no longer drives this standard's envelopes. Select `--method standard` in the read-only benchmark
 above to produce separate results. Adjacent-boundary metrics measure envelope

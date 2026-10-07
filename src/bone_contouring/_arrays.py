@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import SimpleITK as sitk
+from scipy import ndimage as ndi
 
 from .laplace_hamming import LaplaceHammingParameters, laplace_hamming_binarize_xyz
 from .parameters import InnerContourParameters, OuterContourParameters, SegmentationParameters
@@ -57,8 +58,32 @@ def smooth_xyz(
     *,
     sigma: float,
     spacing_xyz: tuple[float, float, float] | None = None,
+    support: int | None = None,
 ) -> np.ndarray:
-    """Smooth an image with the same voxel-relative sigma convention as Timelapsed."""
+    """Smooth with voxel-relative sigma; optional support is a finite voxel radius.
+
+    Without support, retain the recursive contour prefilter. Finite kernels use
+    reflected image boundaries and sigma scaled by the minimum voxel spacing.
+    On isotropic images, support=1 is a separable 3x3x3 sampled Gaussian. This
+    matches the IPL window setting, not verified native coefficients/rounding.
+    """
+    if support is not None:
+        if isinstance(support, (bool, np.bool_)) or not isinstance(support, (int, np.integer)) or support < 0:
+            raise ValueError("Gaussian support must be a nonnegative integer voxel radius.")
+        if not np.isfinite(sigma) or sigma < 0:
+            raise ValueError("Gaussian sigma must be finite and nonnegative.")
+        spacing = np.asarray(spacing_xyz if spacing_xyz is not None else (1., 1., 1.), dtype=float)
+        if spacing.shape != (3,) or not np.all(np.isfinite(spacing)) or np.any(spacing <= 0):
+            raise ValueError("Gaussian spacing must contain three finite positive values.")
+        image = np.asarray(image_xyz, dtype=np.float32)
+        if image.ndim != 3:
+            raise ValueError("Finite Gaussian filtering expects a 3D array.")
+        if sigma == 0 or support == 0:
+            return image.copy()
+        return ndi.gaussian_filter(
+            image, sigma=float(sigma) * spacing.min() / spacing,
+            radius=int(support), mode="reflect",
+        )
     if sigma <= 0:
         return np.asarray(image_xyz, dtype=np.float32).copy()
     image = numpy_xyz_to_sitk_scalar(image_xyz, spacing_xyz)
@@ -129,7 +154,10 @@ def segment_bone_xyz(
     if method in {"global", "seg_gauss"}:
         method = "gauss"
     if method == "gauss":
-        filtered = smooth_xyz(image_xyz, sigma=parameters.gaussian_sigma, spacing_xyz=spacing_xyz)
+        filtered = smooth_xyz(
+            image_xyz, sigma=parameters.gaussian_sigma, spacing_xyz=spacing_xyz,
+            support=parameters.gaussian_support,
+        )
         segmentation = ((filtered >= parameters.trab_threshold) & np.asarray(trab_mask_xyz, dtype=bool)) | (
             (filtered >= parameters.cort_threshold) & np.asarray(cort_mask_xyz, dtype=bool)
         )

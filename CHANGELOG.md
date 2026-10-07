@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Cover published U-Net postprocessing at open Z scan ends using uniform one-, two-, three-, nine- and 31-slice phantoms. Published morphology defaults are unchanged.
+- Promote the repaired IPL-style STEP_1 compartment sequence to the shared standard for XCTI/XCTII radius, tibia and knee. Preserve the repaired outer contour and independent tissue SEG; use seed sigma 2/support 3, threshold 500 (knee 150), six-voxel XY peel and final close 30/50/36 respectively. Reapply the minimum peel after final cleanup, preserve explicit threshold/sigma/peel/close overrides, synchronize scene/batch defaults and retain advisory QA. XCTI/knee transfer and native IPL equivalence are unvalidated; advance standard provenance to `shared_ipl_standard_v1`.
+- Repair the experimental IPL candidate's artificial scan-end caps by continuing terminal slices in Z during morphology; preserve XY background, the input Z domain and recipe distances. Advance candidate provenance/settings hashes; native IPL boundary equivalence remains unverified.
+- Retain opt-in `ipl` XCTII radius/tibia compartment candidate following the supplied Calgary IPL STEP_1 sequence and fixed site constants, including its literal corner filters. Unlike standard, its final complement may reassign small fragments outside the peel. Record unverified native kernel/boundary assumptions and preserve input geometry. Tissue SEG is unchanged by this candidate.
+- Set Gaussian tissue defaults to sigma 0.8, finite support 1 voxel, and unchanged 320/450 thresholds. Filter original density once using a sampled separable Gaussian with reflected boundaries; retain recursive contour prefilters. These align the supplied IPL settings, not verified bit-identical native outputs.
+- Record finite Gaussian support in serialized recipes/settings hashes; preserve Laplace–Hamming behavior and published U-Net compartment outputs.
+
 ## 0.3.5 — 2026-10-02
 
 - Lower standard XCTI periosteal defaults from 300 to 250 for radius/tibia and to 150 for knee, aligning resolved/encoded and shipped batch profiles with the scene defaults. Preserve explicit saved/custom thresholds, XCTII settings, endosteal/tissue thresholds, morphology and smoothing. Existing masks require explicit regeneration.

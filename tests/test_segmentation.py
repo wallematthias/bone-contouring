@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import SimpleITK as sitk
+from scipy import ndimage as ndi
 
 from bone_contouring import ContourParameters, SegmentationParameters, generate_bone_segmentation, resolve_preset
 from bone_contouring._arrays import adaptive_threshold_xyz, segment_bone_xyz
@@ -10,7 +11,7 @@ from bone_contouring.laplace_hamming import LaplaceHammingParameters, laplace_ha
 
 
 @pytest.mark.parametrize("preset", [None, "xct1", "xct2"])
-def test_default_gaussian_tissue_segmentation_matches_one_1_2_voxel_filter(preset):
+def test_default_gaussian_tissue_segmentation_matches_one_0_8_support_1_filter(preset):
     """Default tissue thresholds operate on raw density smoothed exactly once."""
     density = np.random.default_rng(42).uniform(0, 700, (9, 25, 25)).astype(np.float32)
     density[:, 5:10, 4:21] += 500
@@ -27,9 +28,14 @@ def test_default_gaussian_tissue_segmentation_matches_one_1_2_voxel_filter(prese
     # Isolate smoothing/thresholds from the separately tested component cleanup.
     parameters.segmentation.min_size_voxels = 0
     parameters.segmentation.keep_largest_component = False
-    smoothed = sitk.SmoothingRecursiveGaussian(image, 1.2 * .0607)
-    once = sitk.GetArrayFromImage(smoothed)
-    twice = sitk.GetArrayFromImage(sitk.SmoothingRecursiveGaussian(smoothed, 1.2 * .0607))
+    kernel = np.exp(-np.arange(-1, 2, dtype=float)**2 / (2 * .8**2))
+    kernel /= kernel.sum()
+    once = density.copy()
+    for axis in range(3):
+        once = ndi.convolve1d(once, kernel, axis=axis, mode='reflect')
+    twice = once.copy()
+    for axis in range(3):
+        twice = ndi.convolve1d(twice, kernel, axis=axis, mode='reflect')
     def threshold(values):
         return ((values >= 320) & (trab > 0)) | ((values >= 450) & (cort > 0))
 
@@ -38,6 +44,59 @@ def test_default_gaussian_tissue_segmentation_matches_one_1_2_voxel_filter(prese
     assert not np.array_equal(expected, threshold(twice)), "Fixture must detect double filtering"
     result = generate_bone_segmentation(image, parameters, **masks)
     np.testing.assert_array_equal(sitk.GetArrayFromImage(result) > 0, expected)
+
+
+def test_explicit_gaussian_support_limits_influence_to_one_neighbor():
+    from bone_contouring._arrays import smooth_xyz
+    impulse = np.zeros((7, 7, 7), np.float32)
+    impulse[3, 3, 3] = 1000
+    result = smooth_xyz(impulse, sigma=.8, support=1)
+    weights = np.exp(-np.arange(-1, 2, dtype=float)**2 / (2 * .8**2))
+    weights /= weights.sum()
+    expected = np.zeros_like(impulse)
+    expected[2:5, 2:5, 2:5] = 1000 * np.einsum('i,j,k->ijk', weights, weights, weights)
+    np.testing.assert_allclose(result, expected, rtol=2e-7, atol=1e-6)
+
+
+def test_finite_gaussian_reflects_at_terminal_slices_and_handles_short_axes():
+    from bone_contouring._arrays import smooth_xyz
+    result = smooth_xyz(np.array([[[100., 0., 0.]]]), sigma=.8, support=1)
+    weights = np.exp(-np.arange(-1, 2, dtype=float)**2 / (2 * .8**2))
+    weights /= weights.sum()
+    np.testing.assert_allclose(result.ravel(), [100*(weights[0]+weights[1]), 100*weights[2], 0], rtol=2e-7)
+
+
+@pytest.mark.parametrize('support', [-1, 1.5, True])
+def test_finite_gaussian_rejects_invalid_support(support):
+    from bone_contouring._arrays import smooth_xyz
+    with pytest.raises(ValueError, match='support'):
+        smooth_xyz(np.ones((3, 3, 3)), sigma=.8, support=support)
+
+
+def test_finite_gaussian_preserves_physical_sigma_on_anisotropic_images():
+    from bone_contouring._arrays import smooth_xyz
+    image = np.random.default_rng(4).uniform(0, 1000, (5, 6, 7)).astype(np.float32)
+    expected = image.copy()
+    for axis, sigma in enumerate((.8, .4, .2)):
+        weights = np.exp(-np.arange(-1, 2, dtype=float)**2 / (2*sigma**2))
+        expected = ndi.convolve1d(expected, weights/weights.sum(), axis=axis, mode='reflect')
+    np.testing.assert_allclose(smooth_xyz(image, sigma=.8, support=1, spacing_xyz=(1, 2, 4)), expected)
+
+
+@pytest.mark.parametrize('sigma', [-.1, float('nan'), float('inf')])
+def test_finite_gaussian_rejects_invalid_sigma(sigma):
+    from bone_contouring._arrays import smooth_xyz
+    with pytest.raises(ValueError, match='sigma'):
+        smooth_xyz(np.ones((3, 3, 3)), sigma=sigma, support=1)
+
+
+@pytest.mark.parametrize('sigma,support', [(0, 1), (.8, 0)])
+def test_finite_gaussian_zero_is_identity_without_aliasing(sigma, support):
+    from bone_contouring._arrays import smooth_xyz
+    image = np.arange(27, dtype=np.float32).reshape(3, 3, 3)
+    result = smooth_xyz(image, sigma=sigma, support=support)
+    np.testing.assert_array_equal(result, image)
+    assert not np.shares_memory(result, image)
 
 
 def test_gaussian_segmentation_cleans_small_components_and_stays_in_full_mask() -> None:

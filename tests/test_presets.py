@@ -171,11 +171,15 @@ def test_named_xtremect_profiles_encode_scanner_defaults() -> None:
     assert xct1.modality == "xct1"
     assert xct1.segmentation.method == "laplace_hamming"
     assert xct1.segmentation.contour_support_method == ""
+    assert xct1.inner.peel == 6
 
     assert xct2.modality == "xct2"
     assert xct2.segmentation.method == "gauss"
     assert xct2.segmentation.contour_support_method == ""
     assert xct2.outer.contour_method == "standard"
+    assert xct2.inner.peel == 6
+    assert xct2.segmentation.gaussian_sigma == .8
+    assert xct2.segmentation.gaussian_support == 1
 
     assert xct2_geodesic.modality == "xct2"
     assert xct2_geodesic.segmentation.method == "gauss"
@@ -185,6 +189,16 @@ def test_named_xtremect_profiles_encode_scanner_defaults() -> None:
     assert xct2_lh.modality == "xct2"
     assert xct2_lh.segmentation.method == "laplace_hamming"
     assert xct2_lh.segmentation.contour_support_method == "gauss"
+    assert xct2_lh.inner.peel == 6
+
+
+def test_finite_filter_support_is_part_of_batch_provenance():
+    from bone_contouring.batch import _parameters_payload, _settings_hash
+    params = load_preset('XtremeCTII')
+    original_hash = _settings_hash(params)
+    assert _parameters_payload(params)['segmentation']['gaussian_support'] == 1
+    params.segmentation.gaussian_support = 2
+    assert _settings_hash(params) != original_hash
 
 
 def test_load_preset_can_resolve_user_saved_profile_from_shared_registry(tmp_path) -> None:

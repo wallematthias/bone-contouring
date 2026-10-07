@@ -103,3 +103,20 @@ def test_postprocessing_reports_stages_without_changing_masks():
     assert all(isinstance(stage, str) and stage for stage in stages)
     for result, want in zip(actual, expected):
         np.testing.assert_array_equal(result, want)
+
+
+@pytest.mark.parametrize("slice_count", [1, 2, 3, 9, 31])
+def test_open_scan_ends_preserve_compartments_in_uniform_phantom(slice_count):
+    """Changing the Z border to exterior background must not strip scan ends."""
+    x, y = np.ogrid[:72, :72]
+    radius2 = (x - 35)**2 + (y - 35)**2
+    trab = np.repeat((radius2 < 17**2)[:, :, None], slice_count, axis=2)
+    full = np.repeat((radius2 < 25**2)[:, :, None], slice_count, axis=2)
+    cort = full & ~trab
+    result_cort, result_trab = postprocessing.postprocess(np.where(cort, .8, -.6), cort, trab)
+    assert result_trab[35, 35, :].all()
+    assert result_cort[35, 58, :].all()
+    assert not (result_cort & result_trab).any()
+    for mask in (result_cort, result_trab):
+        for z in range(slice_count):
+            np.testing.assert_array_equal(mask[:, :, z], mask[:, :, slice_count // 2])

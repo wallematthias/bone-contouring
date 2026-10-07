@@ -27,6 +27,15 @@ def _ring_image() -> sitk.Image:
     return _image_from_xyz(values)
 
 
+def _large_ring_image() -> sitk.Image:
+    # The documented 15-voxel opening needs a marrow diameter >30 voxels.
+    x, y, _ = np.indices((85, 85, 7))
+    r = np.hypot(x-42, y-42)
+    values = np.where((r >= 29) & (r <= 35), 900., 0.).astype(np.float32)
+    values[r <= 5] = 600  # Interior tissue for the material label test.
+    return _image_from_xyz(values)
+
+
 def _standard_outer_parameters() -> ContourParameters:
     params = ContourParameters()
     params.outer.use_adaptive_threshold = False
@@ -50,20 +59,23 @@ def test_standard_contours_and_gaussian_tissue_each_filter_raw_density(monkeypat
     calls = []
     smooth = _arrays.smooth_xyz
 
-    def record(source, *, sigma, spacing_xyz=None):
-        calls.append((np.array(source, copy=True), sigma))
-        return smooth(source, sigma=sigma, spacing_xyz=spacing_xyz)
+    def record(source, *, sigma, spacing_xyz=None, support=None):
+        calls.append((np.array(source, copy=True), sigma, support))
+        if support is None:
+            return smooth(source, sigma=sigma, spacing_xyz=spacing_xyz)
+        return smooth(source, sigma=sigma, spacing_xyz=spacing_xyz, support=support)
 
     monkeypatch.setattr(_arrays, "smooth_xyz", record)
     params = resolve_preset(modality="xct2", site="radius", segmentation="gauss")
     params.segmentation.min_size_voxels = 0
     params.segmentation.keep_largest_component = False
     masks = generate_masks_from_image(image, params)
-    assert [sigma for _, sigma in calls] == [.8, .8, 1.2]
-    for source, _ in calls:
-        np.testing.assert_array_equal(source, raw)
+    assert [(sigma, support) for _, sigma, support in calls] == [(.8, None), (2., 3), (.8, 1)]
+    np.testing.assert_array_equal(calls[0][0], raw)
+    np.testing.assert_array_equal(calls[-1][0], raw)
     np.testing.assert_array_equal(sitk_to_numpy_xyz(image), raw)
-    once = sitk_to_numpy_xyz(sitk.SmoothingRecursiveGaussian(image, 1.2 * min(image.GetSpacing())))
+    from scipy.ndimage import gaussian_filter
+    once = gaussian_filter(raw, .8, radius=1, mode='reflect')
     trab, cort, full = (sitk_to_numpy_xyz(mask) > 0 for mask in (masks.trab, masks.cort, masks.full))
     expected = (((once >= 320) & trab) | ((once >= 450) & cort)) & full
     assert expected.any()
@@ -91,7 +103,7 @@ def test_generate_masks_fills_full_mask_holes_and_preserves_geometry() -> None:
 
 def test_material_labelmap_encodes_trabecular_and_cortical_bone() -> None:
     """The FEA material labelmap should split segmented bone by trab/cort masks."""
-    image = _ring_image()
+    image = _large_ring_image()
     params = _standard_outer_parameters()
     params.inner.contour_method = "standard"
     params.inner.endosteal_threshold = 500.0
@@ -203,7 +215,7 @@ def test_none_inner_contour_assigns_full_mask_to_trabecular_compartment() -> Non
     params = _standard_outer_parameters()
     params.inner.contour_method = "none"
 
-    masks = generate_masks_from_image(_ring_image(), params)
+    masks = generate_masks_from_image(_large_ring_image(), params)
 
     assert np.array_equal(sitk_to_numpy_xyz(masks.trab), sitk_to_numpy_xyz(masks.full))
     assert not np.any(sitk_to_numpy_xyz(masks.cort))
@@ -222,7 +234,7 @@ def test_oversized_standard_peel_does_not_fall_back_to_full_trab() -> None:
     assert np.array_equal(sitk_to_numpy_xyz(masks.cort), sitk_to_numpy_xyz(masks.full))
     assert masks.metadata["endosteal_fallback"]["applied"] is False
     params.inner.peel = 0
-    without_peel = generate_masks_from_image(_ring_image(), params)
+    without_peel = generate_masks_from_image(_large_ring_image(), params)
     assert np.any(sitk_to_numpy_xyz(without_peel.trab))
 
 

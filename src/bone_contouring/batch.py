@@ -508,6 +508,12 @@ def _parameters_payload(parameters: ContourParameters) -> dict[str, Any]:
     }
     outer_method = parameters.outer.contour_method.strip().lower()
     inner_method = parameters.inner.contour_method.strip().lower()
+    if inner_method == "ipl":
+        from ._ipl import ALGORITHM_REVISION
+        payload["ipl_candidate_algorithm"] = ALGORITHM_REVISION
+    if inner_method == "standard":
+        from ._ipl import ALGORITHM_REVISION
+        payload["standard_inner_algorithm"] = ALGORITHM_REVISION
     if "standard" in {outer_method, inner_method}:
         payload["standard_algorithm"] = STANDARD_ALGORITHM_REVISION
     # Include effective kernels and physical smoothing for every standard preset.

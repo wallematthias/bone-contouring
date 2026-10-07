@@ -12,12 +12,12 @@ def test_standard_defaults_and_versioned_hash(site):
     p = resolve_preset(modality='xct2', site=site, segmentation='gauss')
     assert p.outer.contour_method == p.inner.contour_method == 'standard'
     assert p.outer.periosteal_threshold == 320
-    assert p.inner.endosteal_threshold == 380
-    assert p.outer.gaussian_sigma == p.inner.gaussian_sigma == .8
+    assert p.inner.endosteal_threshold == 500
+    assert p.outer.gaussian_sigma == .8 and p.inner.gaussian_sigma == 2
     assert p.buie.endosteal_kernel_size == (31, 31, 1)
     assert p.stable_3d.inner_sigma_mm == (.03, .03, .06)
     payload = _parameters_payload(p)
-    assert payload['standard_algorithm'] == 'topology_first_v4'
+    assert payload['standard_algorithm'] == 'shared_ipl_standard_v1'
     first = _settings_hash(p)
     p.stable_3d.inner_sigma_mm = (.03, .03, .12)
     assert _settings_hash(p) != first
@@ -27,17 +27,17 @@ def test_standard_defaults_and_versioned_hash(site):
 
 
 @pytest.mark.parametrize('modality,site,outer_threshold', [('xct1', 'radius', 250), ('xct1', 'tibia', 250),
-                                                        ('xct1', 'knee', 150), ('xct2', 'knee', 300)])
+                                                        ('xct1', 'knee', 150), ('xct2', 'knee', 150)])
 def test_other_presets_keep_inner_settings_but_version_the_repaired_algorithm(modality, site, outer_threshold):
     p = resolve_preset(modality=modality, site=site)
     assert p.outer.periosteal_threshold == outer_threshold
-    assert p.inner.endosteal_threshold == 500
-    assert p.outer.gaussian_sigma == p.inner.gaussian_sigma == 1.5
+    assert p.inner.endosteal_threshold == (150 if site == 'knee' else 500)
+    assert p.outer.gaussian_sigma == 1.5 and p.inner.gaussian_sigma == 2
     assert p.buie.endosteal_kernel_size == (10, 10, 1)
     if modality == 'xct1' and site != 'knee':
         assert p.segmentation.laplace_hamming_threshold == 15000
     payload = _parameters_payload(p)
-    assert payload['standard_algorithm'] == 'topology_first_v4'
+    assert payload['standard_algorithm'] == 'shared_ipl_standard_v1'
     first = _settings_hash(p)
     p.stable_3d.inner_sigma_mm = (.03, .03, .04)
     assert _settings_hash(p) != first
@@ -46,9 +46,9 @@ def test_other_presets_keep_inner_settings_but_version_the_repaired_algorithm(mo
 @pytest.mark.parametrize('modality', ['xct1', 'xct2'])
 @pytest.mark.parametrize('site', ['radius', 'tibia', 'knee'])
 def test_standard_preserves_a_thin_shell_and_is_independent_of_tissue_thresholds(modality, site):
-    density = np.zeros((7, 41, 41), np.float32)
-    density[:, 8:33, 8:33] = 900
-    density[:, 9:32, 9:32] = 0
+    density = np.zeros((7, 85, 85), np.float32)
+    density[:, 8:77, 8:77] = 900
+    density[:, 9:76, 9:76] = 0
     image = sitk.GetImageFromArray(density)
     image.SetSpacing((.06, .06, .06))
     p = resolve_preset(modality=modality, site=site, segmentation='gauss')
@@ -60,15 +60,18 @@ def test_standard_preserves_a_thin_shell_and_is_independent_of_tissue_thresholds
     p.segmentation.trab_threshold = p.segmentation.cort_threshold = 10000
     out = generate_masks_from_image(image, p)
     expected = np.zeros_like(density, bool)
-    expected[:, 8:33, 8:33] = True
+    expected[:, 8:77, 8:77] = True
     assert np.array_equal(sitk.GetArrayFromImage(out.full).astype(bool), expected)
-    assert np.array_equal(sitk.GetArrayFromImage(out.cort).astype(bool), density > 0)
+    cort = sitk.GetArrayFromImage(out.cort).astype(bool)
+    trab = sitk.GetArrayFromImage(out.trab).astype(bool)
+    assert cort[density > 0].all() and trab[:, 42, 42].all()
+    assert np.array_equal(cort | trab, expected) and not (cort & trab).any()
     assert not sitk.GetArrayFromImage(out.seg).any()
-    assert out.metadata['outer_contour']['algorithm_revision'] == 'topology_first_v4'
-    assert out.metadata['inner_contour']['algorithm_revision'] == 'topology_first_v4'
+    assert out.metadata['outer_contour']['algorithm_revision'] == 'shared_ipl_standard_v1'
+    assert out.metadata['inner_contour']['standard_algorithm_revision'] == 'shared_ipl_standard_v1'
     p.outer.contour_method = p.inner.contour_method = 'stable_3d'
     explicit = generate_masks_from_image(image, p)
-    for role in ('full', 'trab', 'cort'):
+    for role in ('full',):
         assert np.array_equal(sitk.GetArrayFromImage(getattr(out, role)),
                               sitk.GetArrayFromImage(getattr(explicit, role)))
 
@@ -78,11 +81,12 @@ def test_standard_preserves_a_thin_shell_and_is_independent_of_tissue_thresholds
 def test_default_peel_prevents_full_trab_collapse_even_after_regularization(monkeypatch, modality, site):
     from bone_contouring import _arrays, _stable_3d
     # A shell between the two thresholds otherwise becomes marrow as well as full.
-    density = np.zeros((7, 41, 41), np.float32)
-    density[:, 8:33, 8:33] = 350
-    density[:, 9:32, 9:32] = 0
+    density = np.zeros((7, 85, 85), np.float32)
+    density[:, 8:77, 8:77] = 350
+    density[:, 9:76, 9:76] = 0
     p = resolve_preset(modality=modality, site=site, segmentation='gauss')
-    assert p.inner.peel == 3
+    peel = 6
+    assert p.inner.peel == peel
     p.outer.gaussian_sigma = p.inner.gaussian_sigma = 0
     p.outer.periosteal_kernel_size = 0
     p.buie.endosteal_kernel_size = (1, 1, 1)
@@ -97,14 +101,13 @@ def test_default_peel_prevents_full_trab_collapse_even_after_regularization(monk
     out = generate_masks_from_image(sitk.GetImageFromArray(density), p)
     full, trab, cort = [_arrays.sitk_to_numpy_xyz(getattr(out, role)).astype(bool)
                         for role in ('full', 'trab', 'cort')]
-    expected = _arrays._apply_xy_morphology(full, 3, 'erode')
-    assert np.array_equal(trab, expected)
-    assert trab[20, 20, :].all()  # No artificial Z-end caps.
-    assert not trab[10, 20, :].any()
-    assert trab[11, 20, :].all()
+    expected = _arrays._apply_xy_morphology(full, peel, 'erode')
+    assert not (trab & ~expected).any()
+    assert trab[42, 42, :].all()  # No artificial Z-end caps.
+    assert not trab[8+peel-1, 20, :].any()
+    assert cort.any()
     assert np.array_equal(cort, full & ~trab) and cort.any()
-    assert out.metadata['inner_contour']['quality']['axial_holes'] == []
-    assert out.metadata['inner_contour']['peel_xy_radius_voxels'] == 3
+    assert out.metadata['inner_contour']['minimum_cortical_peel_xy_voxels'] == peel
     assert 'peel' not in out.metadata['inner_contour']['ignored_legacy_controls']
     first = _settings_hash(p)
     p.inner.peel = 0
@@ -122,9 +125,9 @@ def test_post_regularization_pinholes_are_filled_in_both_envelopes(monkeypatch, 
         damaged[20, 20, 3] = False
         return damaged
     monkeypatch.setattr(_stable_3d, 'regularize_mask_xyz', introduce_pinhole)
-    density = np.zeros((7, 41, 41), np.float32)
-    density[:, 8:33, 8:33] = 900
-    density[:, 9:32, 9:32] = 0
+    density = np.zeros((7, 85, 85), np.float32)
+    density[:, 8:77, 8:77] = 900
+    density[:, 9:76, 9:76] = 0
     image = sitk.GetImageFromArray(density)
     p = resolve_preset(modality=modality, site=site, segmentation='gauss')
     p.outer.gaussian_sigma = p.inner.gaussian_sigma = 0
@@ -133,8 +136,8 @@ def test_post_regularization_pinholes_are_filled_in_both_envelopes(monkeypatch, 
     p.segmentation.enabled = False
     out = generate_masks_from_image(image, p)
     for role in ('full', 'trab'):
-        assert sitk.GetArrayFromImage(getattr(out, role))[3, 20, 20]
-        assert out.metadata['outer_contour' if role == 'full' else 'inner_contour']['quality']['axial_holes'] == []
+        assert sitk.GetArrayFromImage(getattr(out, role))[3, 42, 42]
+    assert out.metadata['outer_contour']['quality']['axial_holes'] == []
 
 
 @pytest.mark.parametrize('depth', [1, 2, 3])

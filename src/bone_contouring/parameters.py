@@ -28,9 +28,9 @@ class InnerContourParameters:
     site: str = "radius"
     endosteal_threshold: float = 500.0
     endosteal_kernel_size: int = 3
-    gaussian_sigma: float = 1.5
+    gaussian_sigma: float = 2.0
     use_adaptive_threshold: bool = False
-    peel: int = 3  # Minimum cortical compartment rim: axial XY erosion radius.
+    peel: int = 6  # Minimum cortical compartment rim: axial XY erosion radius.
     trabecular_close_radius: int | None = None
 
 
@@ -41,7 +41,8 @@ class SegmentationParameters:
     enabled: bool = True
     method: str = "gauss"
     contour_support_method: str = ""
-    gaussian_sigma: float = 1.2
+    gaussian_sigma: float = 0.8
+    gaussian_support: int = 1  # Finite kernel radius in voxels, not a contour prefilter.
     trab_threshold: float = 320.0
     cort_threshold: float = 450.0
     adaptive_low_threshold: float = 190.0
@@ -88,9 +89,10 @@ class BuieParameters:
 class Stable3DParameters:
     """Physical-unit boundary regularization and advisory quality controls.
 
-    Standard settings shared across presets, evaluated on XCTII radius/tibia,
-    not an IPL recipe. The boundary-change limit restricts smoothing, not the
-    preceding contour repair.
+    The standard outer stage uses the outer settings and advisory controls.
+    Inner regularization belongs only to the explicit ``stable_3d`` method,
+    not the shared IPL-style standard. The boundary-change limit restricts
+    smoothing, not the preceding contour repair.
     """
 
     outer_sigma_mm: tuple[float, float, float] = (0.03, 0.03, 0.06)
@@ -113,4 +115,4 @@ class ContourParameters:
     stable_3d: Stable3DParameters = field(default_factory=Stable3DParameters)
 
 
-STANDARD_ALGORITHM_REVISION = "topology_first_v4"
+STANDARD_ALGORITHM_REVISION = "shared_ipl_standard_v1"

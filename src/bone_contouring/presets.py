@@ -14,7 +14,7 @@ _MODALITIES = {"xct1", "xct2", "custom"}
 _SITES = {"radius", "tibia", "knee", "none"}
 _SEGMENTATION_METHODS = {"laplace_hamming", "gauss", "adaptive"}
 _OUTER_CONTOUR_METHODS = {"standard", "geodesic", "buie", "ipl_match", "stable_3d"}
-_INNER_CONTOUR_METHODS = {"standard", "none", "buie", "ipl_match", "stable_3d"}
+_INNER_CONTOUR_METHODS = {"standard", "none", "buie", "ipl", "ipl_match", "stable_3d"}
 
 
 def _choice(value: str, allowed: set[str], label: str) -> str:
@@ -46,6 +46,8 @@ def resolve_preset(
         contour_support_method = _choice(contour_support_method, _SEGMENTATION_METHODS, "contour support")
     outer_contour = _choice(outer_contour, _OUTER_CONTOUR_METHODS, "outer contour")
     inner_contour = _choice(inner_contour, _INNER_CONTOUR_METHODS, "inner contour")
+    if inner_contour == "ipl" and (modality != "xct2" or site not in {"radius", "tibia"}):
+        raise ValueError("IPL candidate requires XCTII radius or tibia.")
 
     params = ContourParameters(modality=modality, site=site)
     params.inner.site = site
@@ -77,6 +79,17 @@ def resolve_preset(
         params.inner.endosteal_threshold = 380.0
         params.inner.gaussian_sigma = 0.8
         params.buie.endosteal_kernel_size = (31, 31, 1)
+        if calibrated_xct2:
+            params.inner.peel = 6
+    if inner_contour == "standard":
+        params.inner.endosteal_threshold = 150.0 if site == "knee" else 500.0
+        params.inner.gaussian_sigma = 2.0
+        params.inner.peel = 6
+        params.inner.trabecular_close_radius = {"radius": 30, "tibia": 50, "knee": 36, "none": 30}[site]
+    if site == "knee" and outer_contour == "standard":
+        params.outer.periosteal_threshold = 150.0
+        params.outer.periosteal_kernel_size = 16
+        params.outer.periosteal_open_radius = 8
     return params
 
 

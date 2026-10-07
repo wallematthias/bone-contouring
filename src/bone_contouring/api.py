@@ -123,11 +123,13 @@ def generate_masks_from_image(
         trab_xyz = full_xyz.copy()
         cort_xyz = np.zeros_like(full_xyz)
     elif inner_method == "standard":
-        from . import _stable_3d
-        trab_xyz, cort_xyz, inner_metadata = _stable_3d.inner_contour_xyz(
-            density_xyz, full_xyz, params.inner, params.buie, params.stable_3d,
-            spacing_xyz=spacing_xyz)
-        inner_metadata["algorithm_revision"] = STANDARD_ALGORITHM_REVISION
+        from . import _ipl
+        trab_xyz, cort_xyz, inner_metadata = _ipl.inner_contour_xyz(
+            density_xyz, full_xyz, site=params.site, parameters=params.inner)
+        inner_metadata["standard_algorithm_revision"] = STANDARD_ALGORITHM_REVISION
+        inner_metadata["scanner_transfer_unvalidated"] = params.modality != "xct2" or params.site not in {"radius", "tibia"}
+        from ._stable_3d import mask_quality_xyz
+        inner_metadata["quality"] = mask_quality_xyz(trab_xyz, spacing_xyz, params.stable_3d)
     elif inner_method == "buie":
         from . import _buie
         trab_xyz, cort_xyz, inner_metadata = _buie.inner_contour_xyz(
@@ -136,6 +138,12 @@ def generate_masks_from_image(
         from . import _ipl_match
         trab_xyz, cort_xyz, inner_metadata = _ipl_match.inner_contour_xyz(
             density_xyz, full_xyz, params.inner, params.buie)
+    elif inner_method == "ipl":
+        if params.modality != "xct2" or params.site not in {"radius", "tibia"}:
+            raise ValueError("IPL candidate requires XCTII radius or tibia.")
+        from . import _ipl
+        trab_xyz, cort_xyz, inner_metadata = _ipl.inner_contour_xyz(
+            density_xyz, full_xyz, site=params.site)
     elif inner_method == "stable_3d":
         from . import _stable_3d
         trab_xyz, cort_xyz, inner_metadata = _stable_3d.inner_contour_xyz(
