@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-07
+
 - Cover published U-Net postprocessing at open Z scan ends using uniform one-, two-, three-, nine- and 31-slice phantoms. Published morphology defaults are unchanged.
 - Promote the repaired IPL-style STEP_1 compartment sequence to the shared standard for XCTI/XCTII radius, tibia and knee. Preserve the repaired outer contour and independent tissue SEG; use seed sigma 2/support 3, threshold 500 (knee 150), six-voxel XY peel and final close 30/50/36 respectively. Reapply the minimum peel after final cleanup, preserve explicit threshold/sigma/peel/close overrides, synchronize scene/batch defaults and retain advisory QA. XCTI/knee transfer and native IPL equivalence are unvalidated; advance standard provenance to `shared_ipl_standard_v1`.
 - Repair the experimental IPL candidate's artificial scan-end caps by continuing terminal slices in Z during morphology; preserve XY background, the input Z domain and recipe distances. Advance candidate provenance/settings hashes; native IPL boundary equivalence remains unverified.
