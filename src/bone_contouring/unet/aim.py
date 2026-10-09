@@ -118,7 +118,9 @@ def write_masks(output, stem, masks, metadata, *, source, device):
                  "full", "trab", "cort", "provenance"]
         for role in roles:
             temporary = Path(staging)/paths[role].name
-            with temporary.open("rb") as stream:
+            # Windows fsync/_commit requires a writable handle. Do not truncate
+            # the completed staging file before publishing its exclusive link.
+            with temporary.open("r+b") as stream:
                 os.fsync(stream.fileno())
             os.link(temporary, paths[role])
     return paths

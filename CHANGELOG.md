@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.4.1 — 2026-10-09
+
+- Fix U-Net batch output flushing on Windows by opening completed staging files with writable, non-truncating handles. Preserve native AIM geometry, exclusive publication and completion-marker ordering; inference and postprocessing are unchanged.
+- Add native Windows AIM publication regression coverage in CI.
+
 ## 0.4.0 — 2026-10-07
 
 - Cover published U-Net postprocessing at open Z scan ends using uniform one-, two-, three-, nine- and 31-slice phantoms. Published morphology defaults are unchanged.

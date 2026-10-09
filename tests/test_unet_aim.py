@@ -6,6 +6,45 @@ import pytest
 py_aimio = pytest.importorskip("py_aimio")
 
 
+def test_publication_flushes_writable_handles_for_windows(tmp_path, monkeypatch):
+    """Windows rejects flushing read-only handles after successful inference."""
+    import errno
+    from bone_contouring.unet import aim
+
+    real_open = Path.open
+    real_fsync = aim.os.fsync
+    writable_handles = {}
+
+    def tracked_open(path, *args, **kwargs):
+        stream = real_open(path, *args, **kwargs)
+        writable_handles[stream.fileno()] = stream.writable()
+        return stream
+
+    def windows_fsync(fd):
+        if not writable_handles.get(fd, False):
+            raise OSError(errno.EBADF, "Bad file descriptor")
+        real_fsync(fd)
+
+    monkeypatch.setattr(Path, "open", tracked_open)
+    monkeypatch.setattr(aim.os, "fsync", windows_fsync)
+    trab = np.zeros((3, 7, 9), dtype=np.uint8)
+    trab[:, 2:5, 3:6] = 1
+    cort = np.zeros_like(trab)
+    cort[:, 1, 1:7] = 1
+    masks = dict(full=trab | cort, trab=trab, cort=cort)
+    meta = dict(position=[0]*3, offset=[0]*3, element_size=[.061]*3, unit="native")
+
+    paths = aim.write_masks(tmp_path, "scan", masks, meta,
+                            source=tmp_path / "raw.AIM", device="cpu")
+
+    assert all(path.is_file() for path in paths.values())
+    for role, expected in masks.items():
+        actual, _ = py_aimio.read_aim(str(paths[role]))
+        np.testing.assert_array_equal(actual, expected * 127)
+    assert json.loads(paths["provenance"].read_text())["method"] == "unet"
+    assert not list(tmp_path.glob(".unet-*"))
+
+
 def test_interrupted_publication_never_exposes_truncated_masks(tmp_path, monkeypatch):
     from bone_contouring.unet import aim
     import py_aimio
